@@ -1,0 +1,103 @@
+use sqlx::MySqlPool;
+use tauri::State;
+
+use crate::auth;
+use crate::models::*;
+
+#[tauri::command]
+pub async fn obtener_reporte(
+    pool: State<'_, MySqlPool>,
+    token: String,
+    filtros: Option<FiltrosReporte>,
+) -> Result<ReporteCompleto, String> {
+    let _claims = auth::validate_token(&token)
+        .map_err(|e| format!("Token inválido: {}", e))?;
+
+    let filtros = filtros.unwrap_or_default();
+    let where_clause = build_date_filter(&filtros);
+
+    // Summary
+    let resumen_query = format!(
+        "SELECT COUNT(*) as total_certificaciones, SUM(monto_total) as monto_total
+         FROM certificacion WHERE deleted_at IS NULL {}",
+        where_clause
+    );
+    let resumen = sqlx::query_as::<_, ReporteResumen>(&resumen_query)
+        .fetch_one(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo resumen: {}", e))?;
+
+    // By unit
+    let por_unidad_query = format!(
+        "SELECT uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
+                COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
+         FROM certificacion c
+         INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
+         WHERE c.deleted_at IS NULL {}
+         GROUP BY uo.id, uo.codigo, uo.unidad
+         ORDER BY monto_total DESC",
+        where_clause
+    );
+    let por_unidad = sqlx::query_as::<_, ReportePorUnidad>(&por_unidad_query)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo reporte por unidad: {}", e))?;
+
+    // By account
+    let por_cuenta_query = format!(
+        "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
+                COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
+         FROM certificacion c
+         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
+         WHERE c.deleted_at IS NULL {}
+         GROUP BY cc.id, cc.codigo, cc.cuenta
+         ORDER BY monto_total DESC",
+        where_clause
+    );
+    let por_cuenta = sqlx::query_as::<_, ReportePorCuenta>(&por_cuenta_query)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo reporte por cuenta: {}", e))?;
+
+    // By project
+    let por_proyecto_query = format!(
+        "SELECT p.nombre as proyecto_nombre,
+                COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
+         FROM certificacion c
+         INNER JOIN proyecto p ON c.id_proyecto = p.id
+         WHERE c.deleted_at IS NULL AND c.id_proyecto IS NOT NULL {}
+         GROUP BY p.id, p.nombre
+         ORDER BY monto_total DESC",
+        where_clause
+    );
+    let por_proyecto = sqlx::query_as::<_, ReportePorProyecto>(&por_proyecto_query)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo reporte por proyecto: {}", e))?;
+
+    Ok(ReporteCompleto {
+        resumen,
+        por_unidad,
+        por_cuenta,
+        por_proyecto,
+    })
+}
+
+fn build_date_filter(filtros: &FiltrosReporte) -> String {
+    let mut conditions = Vec::new();
+
+    if let Some(ref fecha_desde) = filtros.fecha_desde {
+        conditions.push(format!("AND c.fecha_certificacion >= '{}'", fecha_desde));
+    }
+    if let Some(ref fecha_hasta) = filtros.fecha_hasta {
+        conditions.push(format!("AND c.fecha_certificacion <= '{}'", fecha_hasta));
+    }
+    if let Some(mes) = filtros.mes {
+        conditions.push(format!("AND MONTH(c.fecha_certificacion) = {}", mes));
+    }
+    if let Some(anio) = filtros.anio {
+        conditions.push(format!("AND YEAR(c.fecha_certificacion) = {}", anio));
+    }
+
+    conditions.join(" ")
+}

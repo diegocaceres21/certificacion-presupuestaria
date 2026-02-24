@@ -1,0 +1,10 @@
+pub mod auth_cmd;
+pub mod certificaciones;
+pub mod cuentas;
+pub mod modificaciones;
+pub mod observaciones;
+pub mod proyectos;
+pub mod reportes;
+pub mod tipo_cuentas;
+pub mod unidades;
+pub mod usuarios;

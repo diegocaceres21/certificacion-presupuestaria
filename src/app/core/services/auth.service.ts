@@ -1,0 +1,73 @@
+import { Injectable, signal, computed } from '@angular/core';
+import { invoke } from '@tauri-apps/api/core';
+import { LoginRequest, LoginResponse, Rol, UserInfo } from '../models';
+
+const TOKEN_KEY = 'cp_auth_token';
+const USER_KEY = 'cp_auth_user';
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly _currentUser = signal<UserInfo | null>(this.loadStoredUser());
+  private readonly _token = signal<string | null>(this.loadStoredToken());
+
+  readonly currentUser = this._currentUser.asReadonly();
+  readonly token = this._token.asReadonly();
+  readonly isAuthenticated = computed(() => !!this._token() && !!this._currentUser());
+  readonly role = computed<Rol | null>(() => this._currentUser()?.rol ?? null);
+  readonly userId = computed(() => this._currentUser()?.id ?? null);
+
+  async login(request: LoginRequest): Promise<LoginResponse> {
+    const response = await invoke<LoginResponse>('login', { request });
+    this._token.set(response.token);
+    this._currentUser.set(response.user);
+    localStorage.setItem(TOKEN_KEY, response.token);
+    localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    return response;
+  }
+
+  logout(): void {
+    this._token.set(null);
+    this._currentUser.set(null);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  }
+
+  getToken(): string {
+    return this._token() ?? '';
+  }
+
+  hasRole(...roles: Rol[]): boolean {
+    const currentRole = this.role();
+    return currentRole !== null && roles.includes(currentRole);
+  }
+
+  canEdit(): boolean {
+    return this.hasRole('administrador', 'encargado');
+  }
+
+  isAdmin(): boolean {
+    return this.hasRole('administrador');
+  }
+
+  async cambiarPassword(passwordActual: string, passwordNueva: string): Promise<string> {
+    return invoke<string>('cambiar_password', {
+      token: this.getToken(),
+      passwordActual,
+      passwordNueva,
+    });
+  }
+
+  private loadStoredToken(): string | null {
+    return localStorage.getItem(TOKEN_KEY);
+  }
+
+  private loadStoredUser(): UserInfo | null {
+    const stored = localStorage.getItem(USER_KEY);
+    if (!stored) return null;
+    try {
+      return JSON.parse(stored) as UserInfo;
+    } catch {
+      return null;
+    }
+  }
+}
