@@ -2,6 +2,7 @@ import {
   Component,
   inject,
   signal,
+  computed,
   ChangeDetectionStrategy,
   OnInit,
 } from '@angular/core';
@@ -18,11 +19,13 @@ import { UnidadService } from '../../../core/services/unidad.service';
 import { CuentaService } from '../../../core/services/cuenta.service';
 import { ProyectoService } from '../../../core/services/proyecto.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { Combobox, ComboboxOption } from '../../../shared/components/combobox/combobox';
+import { Datepicker } from '../../../shared/components/datepicker/datepicker';
 
 @Component({
   selector: 'app-form-certificacion',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Combobox, Datepicker],
   template: `
     <div class="card" style="max-width: 800px; margin: 0 auto">
       <div class="card-header">
@@ -32,13 +35,13 @@ import { ToastService } from '../../../core/services/toast.service';
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <!-- Unidad Organizacional -->
           <div class="form-group">
-            <label for="id_unidad" class="form-label">Unidad Organizacional *</label>
-            <select id="id_unidad" formControlName="id_unidad" class="form-input">
-              <option value="">— Seleccionar unidad —</option>
-              @for (u of unidades(); track u.id) {
-                <option [value]="u.id">{{ u.codigo }} — {{ u.unidad }} ({{ u.dependencia_nombre }})</option>
-              }
-            </select>
+            <label>Unidad Organizacional *</label>
+            <app-combobox
+              formControlName="id_unidad"
+              [options]="unidadOptions()"
+              placeholder="— Seleccionar unidad —"
+              ariaLabel="Unidad organizacional"
+            />
             @if (form.get('id_unidad')?.touched && form.get('id_unidad')?.hasError('required')) {
               <small class="form-error">La unidad organizacional es obligatoria.</small>
             }
@@ -46,13 +49,13 @@ import { ToastService } from '../../../core/services/toast.service';
 
           <!-- Cuenta Contable -->
           <div class="form-group">
-            <label for="id_cuenta_contable" class="form-label">Cuenta Contable *</label>
-            <select id="id_cuenta_contable" formControlName="id_cuenta_contable" class="form-input">
-              <option value="">— Seleccionar cuenta —</option>
-              @for (c of cuentas(); track c.id) {
-                <option [value]="c.id">{{ c.codigo }} — {{ c.cuenta }}</option>
-              }
-            </select>
+            <label>Cuenta Contable *</label>
+            <app-combobox
+              formControlName="id_cuenta_contable"
+              [options]="cuentaOptions()"
+              placeholder="— Seleccionar cuenta —"
+              ariaLabel="Cuenta contable"
+            />
             @if (form.get('id_cuenta_contable')?.touched && form.get('id_cuenta_contable')?.hasError('required')) {
               <small class="form-error">La cuenta contable es obligatoria.</small>
             }
@@ -60,22 +63,21 @@ import { ToastService } from '../../../core/services/toast.service';
 
           <!-- Proyecto (Opcional) -->
           <div class="form-group">
-            <label for="id_proyecto" class="form-label">Proyecto</label>
-            <select id="id_proyecto" formControlName="id_proyecto" class="form-input">
-              <option value="">— Sin proyecto —</option>
-              @for (p of proyectos(); track p.id) {
-                <option [value]="p.id">{{ p.nombre }}{{ p.pei ? ' (PEI: ' + p.pei + ')' : '' }}</option>
-              }
-            </select>
+            <label>Proyecto</label>
+            <app-combobox
+              formControlName="id_proyecto"
+              [options]="proyectoOptions()"
+              placeholder="— Sin proyecto —"
+              ariaLabel="Proyecto"
+            />
           </div>
 
           <!-- Concepto -->
           <div class="form-group">
-            <label for="concepto" class="form-label">Concepto *</label>
+            <label for="concepto">Concepto *</label>
             <textarea
               id="concepto"
               formControlName="concepto"
-              class="form-input"
               rows="4"
               placeholder="Describa el concepto de la certificación presupuestaria..."
             ></textarea>
@@ -86,12 +88,11 @@ import { ToastService } from '../../../core/services/toast.service';
 
           <!-- Monto -->
           <div class="form-group">
-            <label for="monto_total" class="form-label">Importe Total (Bs) *</label>
+            <label for="monto_total">Importe Total (Bs) *</label>
             <input
               id="monto_total"
               type="number"
               formControlName="monto_total"
-              class="form-input"
               step="0.01"
               min="0.01"
               placeholder="0.00"
@@ -106,12 +107,11 @@ import { ToastService } from '../../../core/services/toast.service';
 
           <!-- Fecha Certificación -->
           <div class="form-group">
-            <label for="fecha" class="form-label">Fecha de Certificación *</label>
-            <input
-              id="fecha"
-              type="date"
+            <label>Fecha de Certificación *</label>
+            <app-datepicker
               formControlName="fecha_certificacion"
-              class="form-input"
+              placeholder="Seleccionar fecha"
+              ariaLabel="Fecha de certificación"
             />
             @if (form.get('fecha_certificacion')?.touched && form.get('fecha_certificacion')?.hasError('required')) {
               <small class="form-error">La fecha es obligatoria.</small>
@@ -120,11 +120,10 @@ import { ToastService } from '../../../core/services/toast.service';
 
           <!-- Comentario -->
           <div class="form-group">
-            <label for="comentario" class="form-label">Comentario</label>
+            <label for="comentario">Comentario</label>
             <textarea
               id="comentario"
               formControlName="comentario"
-              class="form-input"
               rows="2"
               placeholder="Comentario adicional (opcional)..."
             ></textarea>
@@ -146,13 +145,6 @@ import { ToastService } from '../../../core/services/toast.service';
     </div>
   `,
   styles: `
-    .form-error {
-      color: var(--color-ucb-secondary);
-      font-size: 0.8rem;
-      margin-top: 0.25rem;
-      display: block;
-    }
-
     .form-actions button {
       min-width: 140px;
     }
@@ -173,6 +165,18 @@ export class FormCertificacion implements OnInit {
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly cuentas = signal<CuentaContableDetalle[]>([]);
   protected readonly proyectos = signal<Proyecto[]>([]);
+
+  protected readonly unidadOptions = computed<ComboboxOption[]>(() =>
+    this.unidades().map(u => ({ value: u.id, label: `${u.codigo} — ${u.unidad} (${u.dependencia_nombre})` }))
+  );
+
+  protected readonly cuentaOptions = computed<ComboboxOption[]>(() =>
+    this.cuentas().map(c => ({ value: c.id, label: `${c.codigo} — ${c.cuenta}` }))
+  );
+
+  protected readonly proyectoOptions = computed<ComboboxOption[]>(() =>
+    this.proyectos().map(p => ({ value: p.id, label: p.nombre + (p.pei ? ` (PEI: ${p.pei})` : '') }))
+  );
 
   private certId = '';
   private certOriginal: CertificacionDetalle | null = null;

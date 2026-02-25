@@ -2,6 +2,7 @@ import {
   Component,
   inject,
   signal,
+  computed,
   ChangeDetectionStrategy,
   OnInit,
 } from '@angular/core';
@@ -12,11 +13,13 @@ import {
 } from '../../../core/models';
 import { UnidadService } from '../../../core/services/unidad.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { Modal } from '../../../shared/components/modal/modal';
+import { Combobox, ComboboxOption } from '../../../shared/components/combobox/combobox';
 
 @Component({
   selector: 'app-unidades',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Modal, Combobox],
   template: `
     <div class="card">
       <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
@@ -61,48 +64,36 @@ import { ToastService } from '../../../core/services/toast.service';
     </div>
 
     @if (modalAbierto()) {
-      <div class="modal-overlay" (click)="cerrarModal()" role="dialog" aria-modal="true" aria-label="Formulario de unidad">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editandoId() ? 'Editar' : 'Nueva' }} Unidad</h3>
-            <button class="btn-icon" (click)="cerrarModal()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalAbierto()" [title]="editandoId() ? 'Editar Unidad' : 'Nueva Unidad'" ariaLabel="Formulario de unidad" (closed)="cerrarModal()">
+        <form [formGroup]="form" (ngSubmit)="guardar()">
+          <div class="form-group">
+            <label for="codigo">Código *</label>
+            <input id="codigo" type="number" formControlName="codigo" />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="form" (ngSubmit)="guardar()">
-              <div class="form-group">
-                <label for="codigo" class="form-label">Código *</label>
-                <input id="codigo" type="number" formControlName="codigo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="unidad" class="form-label">Nombre *</label>
-                <input id="unidad" type="text" formControlName="unidad" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="id_dependencia" class="form-label">Dependencia *</label>
-                <select id="id_dependencia" formControlName="id_dependencia" class="form-input">
-                  <option value="">— Seleccionar —</option>
-                  @for (d of dependencias(); track d.id) {
-                    <option [value]="d.id">{{ d.codigo }} — {{ d.dependencia }}</option>
-                  }
-                </select>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="form.invalid || guardando()">
-                  {{ guardando() ? 'Guardando...' : 'Guardar' }}
-                </button>
-              </div>
-            </form>
+          <div class="form-group">
+            <label for="unidad">Nombre *</label>
+            <input id="unidad" type="text" formControlName="unidad" />
           </div>
+          <div class="form-group">
+            <label>Dependencia *</label>
+            <app-combobox
+              formControlName="id_dependencia"
+              [options]="dependenciaOptions()"
+              placeholder="— Seleccionar —"
+              ariaLabel="Dependencia"
+            />
+          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="form.invalid || guardando()" (click)="guardar()">
+            {{ guardando() ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
   `,
-  styles: `
-    .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-active { background: #dcfce7; color: #166534; }
-    .badge-inactive { background: #fee2e2; color: #991b1b; }
-  `,
+  styles: ``,
 })
 export class Unidades implements OnInit {
   private readonly svc = inject(UnidadService);
@@ -114,6 +105,10 @@ export class Unidades implements OnInit {
   protected readonly modalAbierto = signal(false);
   protected readonly editandoId = signal<string | null>(null);
   protected readonly guardando = signal(false);
+
+  protected readonly dependenciaOptions = computed<ComboboxOption[]>(() =>
+    this.dependencias().map(d => ({ value: d.id, label: `${d.codigo} — ${d.dependencia}` }))
+  );
 
   protected readonly form = this.fb.nonNullable.group({
     codigo: [0, Validators.required],

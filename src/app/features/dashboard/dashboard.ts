@@ -1,6 +1,6 @@
 import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 import { CertificacionService } from '../../core/services/certificacion.service';
 import { UnidadService } from '../../core/services/unidad.service';
@@ -11,11 +11,13 @@ import { ToastService } from '../../core/services/toast.service';
 import { CertificacionDetalle, FiltrosCertificacion, UnidadConDependencia, CuentaContableDetalle, Proyecto, UsuarioConPerfil } from '../../core/models';
 import { DetalleCertificacion } from './detalle-certificacion/detalle-certificacion';
 import { PrintCertificacion } from '../../shared/components/print-certificacion/print-certificacion';
+import { Combobox, ComboboxOption } from '../../shared/components/combobox/combobox';
+import { Datepicker } from '../../shared/components/datepicker/datepicker';
 
 @Component({
   selector: 'app-dashboard',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, DetalleCertificacion, PrintCertificacion],
+  imports: [ReactiveFormsModule, DetalleCertificacion, PrintCertificacion, Combobox, Datepicker],
   template: `
     <div class="page-header">
       <h1 class="page-title">Panel de Control</h1>
@@ -27,58 +29,69 @@ import { PrintCertificacion } from '../../shared/components/print-certificacion/
     <!-- Filters -->
     <div class="card mb-4 no-print">
       <div class="card-body">
-        <div class="filters-grid">
+        <div class="filters-grid" [formGroup]="filterForm">
           <div class="filter-item">
-            <label for="f-unidad">Unidad Organizacional</label>
-            <select id="f-unidad" [(ngModel)]="filtros.id_unidad" (ngModelChange)="applyFilters()">
-              <option value="">Todas</option>
-              @for (u of unidades(); track u.id) {
-                <option [value]="u.id">{{ u.codigo }} - {{ u.unidad }}</option>
-              }
-            </select>
+            <label>Unidad Organizacional</label>
+            <app-combobox
+              [multiple]="true"
+              formControlName="id_unidad"
+              [options]="unidadOptions()"
+              placeholder="Todas"
+              ariaLabel="Filtrar por unidad"
+            />
           </div>
           <div class="filter-item">
-            <label for="f-cuenta">Cuenta Contable</label>
-            <select id="f-cuenta" [(ngModel)]="filtros.id_cuenta_contable" (ngModelChange)="applyFilters()">
-              <option value="">Todas</option>
-              @for (c of cuentas(); track c.id) {
-                <option [value]="c.id">{{ c.codigo }} - {{ c.cuenta }}</option>
-              }
-            </select>
+            <label>Cuenta Contable</label>
+            <app-combobox
+              [multiple]="true"
+              formControlName="id_cuenta_contable"
+              [options]="cuentaOptions()"
+              placeholder="Todas"
+              ariaLabel="Filtrar por cuenta"
+            />
           </div>
           <div class="filter-item">
-            <label for="f-proyecto">Proyecto</label>
-            <select id="f-proyecto" [(ngModel)]="filtros.id_proyecto" (ngModelChange)="applyFilters()">
-              <option value="">Todos</option>
-              @for (p of proyectos(); track p.id) {
-                <option [value]="p.id">{{ p.nombre }}</option>
-              }
-            </select>
+            <label>Proyecto</label>
+            <app-combobox
+              [multiple]="true"
+              formControlName="id_proyecto"
+              [options]="proyectoOptions()"
+              placeholder="Todos"
+              ariaLabel="Filtrar por proyecto"
+            />
           </div>
           <div class="filter-item">
-            <label for="f-usuario">Generado por</label>
-            <select id="f-usuario" [(ngModel)]="filtros.generado_por" (ngModelChange)="applyFilters()">
-              <option value="">Todos</option>
-              @for (u of usuarios(); track u.id) {
-                <option [value]="u.id">{{ u.nombre_completo }}</option>
-              }
-            </select>
+            <label>Generado por</label>
+            <app-combobox
+              [multiple]="true"
+              formControlName="generado_por"
+              [options]="usuarioOptions()"
+              placeholder="Todos"
+              ariaLabel="Filtrar por usuario"
+            />
           </div>
           <div class="filter-item">
-            <label for="f-desde">Fecha desde</label>
-            <input id="f-desde" type="date" [(ngModel)]="filtros.fecha_desde" (ngModelChange)="applyFilters()" />
+            <label>Fecha desde</label>
+            <app-datepicker
+              formControlName="fecha_desde"
+              placeholder="Desde"
+              ariaLabel="Fecha desde"
+            />
           </div>
           <div class="filter-item">
-            <label for="f-hasta">Fecha hasta</label>
-            <input id="f-hasta" type="date" [(ngModel)]="filtros.fecha_hasta" (ngModelChange)="applyFilters()" />
+            <label>Fecha hasta</label>
+            <app-datepicker
+              formControlName="fecha_hasta"
+              placeholder="Hasta"
+              ariaLabel="Fecha hasta"
+            />
           </div>
           <div class="filter-item filter-search">
             <label for="f-busqueda">Buscar</label>
             <input
               id="f-busqueda"
               type="search"
-              [(ngModel)]="filtros.busqueda"
-              (ngModelChange)="applyFilters()"
+              formControlName="busqueda"
               placeholder="Nro. certificación o concepto..."
             />
           </div>
@@ -216,6 +229,7 @@ export class Dashboard implements OnInit {
   private readonly usuarioService = inject(UsuarioService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly fb = inject(FormBuilder);
 
   protected readonly certificaciones = signal<CertificacionDetalle[]>([]);
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
@@ -226,9 +240,35 @@ export class Dashboard implements OnInit {
   protected readonly selectedCert = signal<CertificacionDetalle | null>(null);
   protected readonly printCert = signal<CertificacionDetalle | null>(null);
 
-  protected filtros: FiltrosCertificacion = {};
+  protected readonly filterForm = this.fb.group({
+    id_unidad: [''],
+    id_cuenta_contable: [''],
+    id_proyecto: [''],
+    generado_por: [''],
+    fecha_desde: [''],
+    fecha_hasta: [''],
+    busqueda: [''],
+  });
+
+  protected readonly unidadOptions = computed<ComboboxOption[]>(() =>
+    this.unidades().map(u => ({ value: u.id, label: `${u.codigo} - ${u.unidad}` }))
+  );
+
+  protected readonly cuentaOptions = computed<ComboboxOption[]>(() =>
+    this.cuentas().map(c => ({ value: c.id, label: `${c.codigo} - ${c.cuenta}` }))
+  );
+
+  protected readonly proyectoOptions = computed<ComboboxOption[]>(() =>
+    this.proyectos().map(p => ({ value: p.id, label: p.nombre }))
+  );
+
+  protected readonly usuarioOptions = computed<ComboboxOption[]>(() =>
+    this.usuarios().map(u => ({ value: u.id, label: u.nombre_completo }))
+  );
 
   async ngOnInit(): Promise<void> {
+    // Subscribe to filter changes for auto-apply
+    this.filterForm.valueChanges.subscribe(() => this.applyFilters());
     await this.loadData();
   }
 
@@ -257,14 +297,15 @@ export class Dashboard implements OnInit {
   protected async applyFilters(): Promise<void> {
     this.loading.set(true);
     try {
+      const val = this.filterForm.getRawValue();
       const filtrosLimpios: FiltrosCertificacion = {};
-      if (this.filtros.id_unidad) filtrosLimpios.id_unidad = this.filtros.id_unidad;
-      if (this.filtros.id_cuenta_contable) filtrosLimpios.id_cuenta_contable = this.filtros.id_cuenta_contable;
-      if (this.filtros.id_proyecto) filtrosLimpios.id_proyecto = this.filtros.id_proyecto;
-      if (this.filtros.generado_por) filtrosLimpios.generado_por = this.filtros.generado_por;
-      if (this.filtros.fecha_desde) filtrosLimpios.fecha_desde = this.filtros.fecha_desde;
-      if (this.filtros.fecha_hasta) filtrosLimpios.fecha_hasta = this.filtros.fecha_hasta;
-      if (this.filtros.busqueda) filtrosLimpios.busqueda = this.filtros.busqueda;
+      if (val.id_unidad) filtrosLimpios.id_unidad = val.id_unidad;
+      if (val.id_cuenta_contable) filtrosLimpios.id_cuenta_contable = val.id_cuenta_contable;
+      if (val.id_proyecto) filtrosLimpios.id_proyecto = val.id_proyecto;
+      if (val.generado_por) filtrosLimpios.generado_por = val.generado_por;
+      if (val.fecha_desde) filtrosLimpios.fecha_desde = val.fecha_desde;
+      if (val.fecha_hasta) filtrosLimpios.fecha_hasta = val.fecha_hasta;
+      if (val.busqueda) filtrosLimpios.busqueda = val.busqueda;
 
       const certs = await this.certService.listar(
         Object.keys(filtrosLimpios).length > 0 ? filtrosLimpios : undefined,
@@ -278,7 +319,7 @@ export class Dashboard implements OnInit {
   }
 
   protected clearFilters(): void {
-    this.filtros = {};
+    this.filterForm.reset();
     this.applyFilters();
   }
 

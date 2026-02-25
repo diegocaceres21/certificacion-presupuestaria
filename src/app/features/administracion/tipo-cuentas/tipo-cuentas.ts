@@ -9,11 +9,12 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { TipoCuenta } from '../../../core/models';
 import { TipoCuentaService } from '../../../core/services/tipo-cuenta.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { Modal } from '../../../shared/components/modal/modal';
 
 @Component({
   selector: 'app-tipo-cuentas',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Modal],
   template: `
     <div class="card">
       <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
@@ -54,35 +55,23 @@ import { ToastService } from '../../../core/services/toast.service';
     </div>
 
     @if (modalAbierto()) {
-      <div class="modal-overlay" (click)="cerrarModal()" role="dialog" aria-modal="true" aria-label="Formulario de tipo de cuenta">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editandoId() ? 'Editar' : 'Nuevo' }} Tipo de Cuenta</h3>
-            <button class="btn-icon" (click)="cerrarModal()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalAbierto()" [title]="editandoId() ? 'Editar Tipo de Cuenta' : 'Nuevo Tipo de Cuenta'" ariaLabel="Formulario de tipo de cuenta" (closed)="cerrarModal()">
+        <form [formGroup]="form" (ngSubmit)="guardar()">
+          <div class="form-group">
+            <label for="tipo">Nombre del Tipo *</label>
+            <input id="tipo" type="text" formControlName="tipo" />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="form" (ngSubmit)="guardar()">
-              <div class="form-group">
-                <label for="tipo" class="form-label">Nombre del Tipo *</label>
-                <input id="tipo" type="text" formControlName="tipo" class="form-input" />
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="form.invalid || guardando()">
-                  {{ guardando() ? 'Guardando...' : 'Guardar' }}
-                </button>
-              </div>
-            </form>
-          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="form.invalid || guardando()" (click)="guardar()">
+            {{ guardando() ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
   `,
-  styles: `
-    .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-active { background: #dcfce7; color: #166534; }
-    .badge-inactive { background: #fee2e2; color: #991b1b; }
-  `,
+  styles: ``,
 })
 export class TipoCuentas implements OnInit {
   private readonly svc = inject(TipoCuentaService);

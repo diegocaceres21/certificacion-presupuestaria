@@ -2,6 +2,7 @@ import {
   Component,
   inject,
   signal,
+  computed,
   ChangeDetectionStrategy,
   OnInit,
 } from '@angular/core';
@@ -10,11 +11,13 @@ import { CuentaContableDetalle, TipoCuenta } from '../../../core/models';
 import { CuentaService } from '../../../core/services/cuenta.service';
 import { TipoCuentaService } from '../../../core/services/tipo-cuenta.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { Modal } from '../../../shared/components/modal/modal';
+import { Combobox, ComboboxOption } from '../../../shared/components/combobox/combobox';
 
 @Component({
   selector: 'app-cuentas',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Modal, Combobox],
   template: `
     <div class="card">
       <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
@@ -61,57 +64,45 @@ import { ToastService } from '../../../core/services/toast.service';
     </div>
 
     @if (modalAbierto()) {
-      <div class="modal-overlay" (click)="cerrarModal()" role="dialog" aria-modal="true" aria-label="Formulario de cuenta contable">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editandoId() ? 'Editar' : 'Nueva' }} Cuenta Contable</h3>
-            <button class="btn-icon" (click)="cerrarModal()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalAbierto()" [title]="editandoId() ? 'Editar Cuenta Contable' : 'Nueva Cuenta Contable'" ariaLabel="Formulario de cuenta contable" (closed)="cerrarModal()">
+        <form [formGroup]="form" (ngSubmit)="guardar()">
+          <div class="form-group">
+            <label>Tipo de Cuenta *</label>
+            <app-combobox
+              formControlName="id_tipo_cuenta"
+              [options]="tipoCuentaOptions()"
+              placeholder="Seleccione un tipo"
+              ariaLabel="Tipo de cuenta"
+            />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="form" (ngSubmit)="guardar()">
-              <div class="form-group">
-                <label for="id_tipo_cuenta" class="form-label">Tipo de Cuenta *</label>
-                <select id="id_tipo_cuenta" formControlName="id_tipo_cuenta" class="form-input">
-                  <option value="">Seleccione un tipo</option>
-                  @for (t of tiposCuenta(); track t.id) {
-                    <option [value]="t.id">{{ t.tipo }}</option>
-                  }
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="id_cuenta_padre" class="form-label">Cuenta Padre</label>
-                <select id="id_cuenta_padre" formControlName="id_cuenta_padre" class="form-input">
-                  <option value="">Sin cuenta padre</option>
-                  @for (c of cuentasPadre(); track c.id) {
-                    <option [value]="c.id">{{ c.codigo }} - {{ c.cuenta }}</option>
-                  }
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="codigo" class="form-label">Código *</label>
-                <input id="codigo" type="number" formControlName="codigo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="cuenta" class="form-label">Nombre de Cuenta *</label>
-                <input id="cuenta" type="text" formControlName="cuenta" class="form-input" />
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="form.invalid || guardando()">
-                  {{ guardando() ? 'Guardando...' : 'Guardar' }}
-                </button>
-              </div>
-            </form>
+          <div class="form-group">
+            <label>Cuenta Padre</label>
+            <app-combobox
+              formControlName="id_cuenta_padre"
+              [options]="cuentaPadreOptions()"
+              placeholder="Sin cuenta padre"
+              ariaLabel="Cuenta padre"
+            />
           </div>
+          <div class="form-group">
+            <label for="codigo">Código *</label>
+            <input id="codigo" type="number" formControlName="codigo" />
+          </div>
+          <div class="form-group">
+            <label for="cuenta">Nombre de Cuenta *</label>
+            <input id="cuenta" type="text" formControlName="cuenta" />
+          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="form.invalid || guardando()" (click)="guardar()">
+            {{ guardando() ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
   `,
-  styles: `
-    .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-active { background: #dcfce7; color: #166534; }
-    .badge-inactive { background: #fee2e2; color: #991b1b; }
-  `,
+  styles: ``,
 })
 export class Cuentas implements OnInit {
   private readonly svc = inject(CuentaService);
@@ -125,6 +116,14 @@ export class Cuentas implements OnInit {
   protected readonly modalAbierto = signal(false);
   protected readonly editandoId = signal<string | null>(null);
   protected readonly guardando = signal(false);
+
+  protected readonly tipoCuentaOptions = computed<ComboboxOption[]>(() =>
+    this.tiposCuenta().map(t => ({ value: t.id, label: t.tipo }))
+  );
+
+  protected readonly cuentaPadreOptions = computed<ComboboxOption[]>(() =>
+    this.cuentasPadre().map(c => ({ value: c.id, label: `${c.codigo} - ${c.cuenta}` }))
+  );
 
   protected readonly form = this.fb.nonNullable.group({
     id_tipo_cuenta: ['', Validators.required],

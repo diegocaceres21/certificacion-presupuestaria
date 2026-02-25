@@ -9,11 +9,12 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Proyecto } from '../../../core/models';
 import { ProyectoService } from '../../../core/services/proyecto.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { Modal } from '../../../shared/components/modal/modal';
 
 @Component({
   selector: 'app-proyectos',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Modal],
   template: `
     <div class="card">
       <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
@@ -58,43 +59,31 @@ import { ToastService } from '../../../core/services/toast.service';
     </div>
 
     @if (modalAbierto()) {
-      <div class="modal-overlay" (click)="cerrarModal()" role="dialog" aria-modal="true" aria-label="Formulario de proyecto">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editandoId() ? 'Editar' : 'Nuevo' }} Proyecto</h3>
-            <button class="btn-icon" (click)="cerrarModal()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalAbierto()" [title]="editandoId() ? 'Editar Proyecto' : 'Nuevo Proyecto'" ariaLabel="Formulario de proyecto" (closed)="cerrarModal()">
+        <form [formGroup]="form" (ngSubmit)="guardar()">
+          <div class="form-group">
+            <label for="nombre">Nombre *</label>
+            <input id="nombre" type="text" formControlName="nombre" />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="form" (ngSubmit)="guardar()">
-              <div class="form-group">
-                <label for="nombre" class="form-label">Nombre *</label>
-                <input id="nombre" type="text" formControlName="nombre" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="descripcion" class="form-label">Descripción</label>
-                <textarea id="descripcion" formControlName="descripcion" class="form-input" rows="2"></textarea>
-              </div>
-              <div class="form-group">
-                <label for="pei" class="form-label">PEI</label>
-                <input id="pei" type="text" formControlName="pei" class="form-input" placeholder="Ej: PEI-2024-001" />
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="form.invalid || guardando()">
-                  {{ guardando() ? 'Guardando...' : 'Guardar' }}
-                </button>
-              </div>
-            </form>
+          <div class="form-group">
+            <label for="descripcion">Descripción</label>
+            <textarea id="descripcion" formControlName="descripcion" rows="2"></textarea>
           </div>
+          <div class="form-group">
+            <label for="pei">PEI</label>
+            <input id="pei" type="text" formControlName="pei" placeholder="Ej: PEI-2024-001" />
+          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="form.invalid || guardando()" (click)="guardar()">
+            {{ guardando() ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
   `,
-  styles: `
-    .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-active { background: #dcfce7; color: #166534; }
-    .badge-inactive { background: #fee2e2; color: #991b1b; }
-  `,
+  styles: ``,
 })
 export class Proyectos implements OnInit {
   private readonly svc = inject(ProyectoService);

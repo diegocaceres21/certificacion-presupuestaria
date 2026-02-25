@@ -10,11 +10,13 @@ import { TitleCasePipe } from '@angular/common';
 import { UsuarioConPerfil } from '../../core/models';
 import { UsuarioService } from '../../core/services/usuario.service';
 import { ToastService } from '../../core/services/toast.service';
+import { Modal } from '../../shared/components/modal/modal';
+import { Combobox, ComboboxOption } from '../../shared/components/combobox/combobox';
 
 @Component({
   selector: 'app-usuarios',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, TitleCasePipe],
+  imports: [ReactiveFormsModule, TitleCasePipe, Modal, Combobox],
   template: `
     <div class="card">
       <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
@@ -69,123 +71,84 @@ import { ToastService } from '../../core/services/toast.service';
 
     <!-- Modal Crear -->
     @if (modalCrear()) {
-      <div class="modal-overlay" (click)="cerrarModales()" role="dialog" aria-modal="true" aria-label="Crear usuario">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>Nuevo Usuario</h3>
-            <button class="btn-icon" (click)="cerrarModales()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalCrear()" title="Nuevo Usuario" ariaLabel="Crear usuario" (closed)="cerrarModales()">
+        <form [formGroup]="crearForm" (ngSubmit)="crear()">
+          <div class="form-group">
+            <label for="c_usuario">Usuario *</label>
+            <input id="c_usuario" type="text" formControlName="usuario" autocomplete="off" />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="crearForm" (ngSubmit)="crear()">
-              <div class="form-group">
-                <label for="c_usuario" class="form-label">Usuario *</label>
-                <input id="c_usuario" type="text" formControlName="usuario" class="form-input" autocomplete="off" />
-              </div>
-              <div class="form-group">
-                <label for="c_password" class="form-label">Contraseña *</label>
-                <input id="c_password" type="password" formControlName="password" class="form-input" autocomplete="new-password" />
-              </div>
-              <div class="form-group">
-                <label for="c_nombre" class="form-label">Nombre Completo *</label>
-                <input id="c_nombre" type="text" formControlName="nombre_completo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="c_cargo" class="form-label">Cargo *</label>
-                <input id="c_cargo" type="text" formControlName="cargo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="c_rol" class="form-label">Rol *</label>
-                <select id="c_rol" formControlName="rol" class="form-input">
-                  <option value="">— Seleccionar —</option>
-                  <option value="administrador">Administrador</option>
-                  <option value="encargado">Encargado</option>
-                  <option value="lector">Lector</option>
-                </select>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModales()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="crearForm.invalid || guardando()">
-                  {{ guardando() ? 'Creando...' : 'Crear Usuario' }}
-                </button>
-              </div>
-            </form>
+          <div class="form-group">
+            <label for="c_password">Contraseña *</label>
+            <input id="c_password" type="password" formControlName="password" autocomplete="new-password" />
           </div>
+          <div class="form-group">
+            <label for="c_nombre">Nombre Completo *</label>
+            <input id="c_nombre" type="text" formControlName="nombre_completo" />
+          </div>
+          <div class="form-group">
+            <label for="c_cargo">Cargo *</label>
+            <input id="c_cargo" type="text" formControlName="cargo" />
+          </div>
+          <div class="form-group">
+            <label for="c_rol">Rol *</label>
+            <app-combobox formControlName="rol" [options]="rolOptions" placeholder="Seleccionar rol" ariaLabel="Rol del usuario" />
+          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModales()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="crearForm.invalid || guardando()" (click)="crear()">
+            {{ guardando() ? 'Creando...' : 'Crear Usuario' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
 
     <!-- Modal Editar -->
     @if (modalEditar()) {
-      <div class="modal-overlay" (click)="cerrarModales()" role="dialog" aria-modal="true" aria-label="Editar usuario">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>Editar Usuario</h3>
-            <button class="btn-icon" (click)="cerrarModales()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalEditar()" title="Editar Usuario" ariaLabel="Editar usuario" (closed)="cerrarModales()">
+        <form [formGroup]="editarForm" (ngSubmit)="editar()">
+          <div class="form-group">
+            <label for="e_nombre">Nombre Completo *</label>
+            <input id="e_nombre" type="text" formControlName="nombre_completo" />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="editarForm" (ngSubmit)="editar()">
-              <div class="form-group">
-                <label for="e_nombre" class="form-label">Nombre Completo *</label>
-                <input id="e_nombre" type="text" formControlName="nombre_completo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="e_cargo" class="form-label">Cargo *</label>
-                <input id="e_cargo" type="text" formControlName="cargo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="e_rol" class="form-label">Rol *</label>
-                <select id="e_rol" formControlName="rol" class="form-input">
-                  <option value="administrador">Administrador</option>
-                  <option value="encargado">Encargado</option>
-                  <option value="lector">Lector</option>
-                </select>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModales()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="editarForm.invalid || guardando()">
-                  {{ guardando() ? 'Guardando...' : 'Guardar Cambios' }}
-                </button>
-              </div>
-            </form>
+          <div class="form-group">
+            <label for="e_cargo">Cargo *</label>
+            <input id="e_cargo" type="text" formControlName="cargo" />
           </div>
+          <div class="form-group">
+            <label for="e_rol">Rol *</label>
+            <app-combobox formControlName="rol" [options]="rolOptions" placeholder="Seleccionar rol" ariaLabel="Rol del usuario" />
+          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModales()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="editarForm.invalid || guardando()" (click)="editar()">
+            {{ guardando() ? 'Guardando...' : 'Guardar Cambios' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
 
     <!-- Modal Reset Password -->
     @if (modalReset()) {
-      <div class="modal-overlay" (click)="cerrarModales()" role="dialog" aria-modal="true" aria-label="Resetear contraseña">
-        <div class="modal-content" style="max-width: 450px" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>Resetear Contraseña</h3>
-            <button class="btn-icon" (click)="cerrarModales()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalReset()" title="Resetear Contraseña" ariaLabel="Resetear contraseña" (closed)="cerrarModales()">
+        <p style="margin-bottom: 1rem">Usuario: <strong>{{ resetUsuario()?.usuario }}</strong></p>
+        <form [formGroup]="resetForm" (ngSubmit)="resetPassword()">
+          <div class="form-group">
+            <label for="r_password">Nueva Contraseña *</label>
+            <input id="r_password" type="password" formControlName="password" autocomplete="new-password" />
           </div>
-          <div class="modal-body">
-            <p style="margin-bottom: 1rem">Usuario: <strong>{{ resetUsuario()?.usuario }}</strong></p>
-            <form [formGroup]="resetForm" (ngSubmit)="resetPassword()">
-              <div class="form-group">
-                <label for="r_password" class="form-label">Nueva Contraseña *</label>
-                <input id="r_password" type="password" formControlName="password" class="form-input" autocomplete="new-password" />
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModales()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="resetForm.invalid || guardando()">
-                  {{ guardando() ? 'Reseteando...' : 'Resetear' }}
-                </button>
-              </div>
-            </form>
-          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModales()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="resetForm.invalid || guardando()" (click)="resetPassword()">
+            {{ guardando() ? 'Reseteando...' : 'Resetear' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
   `,
   styles: `
-    .badge {
-      padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
-      display: inline-block;
-    }
-    .badge-active { background: #dcfce7; color: #166534; }
-    .badge-inactive { background: #fee2e2; color: #991b1b; }
     .badge-admin { background: #dbeafe; color: #1e40af; }
     .badge-enc { background: #fef3c7; color: #92400e; }
     .badge-lec { background: #f3f4f6; color: #374151; }
@@ -203,6 +166,12 @@ export class Usuarios implements OnInit {
   protected readonly guardando = signal(false);
   protected readonly editandoId = signal<string | null>(null);
   protected readonly resetUsuario = signal<UsuarioConPerfil | null>(null);
+
+  protected readonly rolOptions: ComboboxOption[] = [
+    { value: 'administrador', label: 'Administrador' },
+    { value: 'encargado', label: 'Encargado' },
+    { value: 'lector', label: 'Lector' },
+  ];
 
   protected readonly crearForm = this.fb.nonNullable.group({
     usuario: ['', Validators.required],

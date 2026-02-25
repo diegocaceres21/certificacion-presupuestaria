@@ -16,11 +16,13 @@ import {
 } from '../../core/models';
 import { ReporteService } from '../../core/services/reporte.service';
 import { ToastService } from '../../core/services/toast.service';
+import { Combobox, ComboboxOption } from '../../shared/components/combobox/combobox';
+import { Datepicker } from '../../shared/components/datepicker/datepicker';
 
 @Component({
   selector: 'app-reportes',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, DecimalPipe],
+  imports: [ReactiveFormsModule, DecimalPipe, Combobox, Datepicker],
   template: `
     <div class="card" style="margin-bottom: 1.5rem">
       <div class="card-header">
@@ -28,26 +30,34 @@ import { ToastService } from '../../core/services/toast.service';
       </div>
       <div class="card-body">
         <form [formGroup]="filtros" (ngSubmit)="cargar()" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end">
-          <div class="form-group" style="flex: 1; min-width: 150px">
-            <label for="mes" class="form-label">Mes</label>
-            <select id="mes" formControlName="mes" class="form-input">
-              <option [ngValue]="null">Todos</option>
-              @for (m of meses; track m.valor) {
-                <option [ngValue]="m.valor">{{ m.nombre }}</option>
-              }
-            </select>
+          <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0">
+            <label>Mes</label>
+            <app-combobox
+              formControlName="mes"
+              [options]="mesOptions"
+              placeholder="Todos"
+              ariaLabel="Filtrar por mes"
+            />
           </div>
-          <div class="form-group" style="flex: 1; min-width: 120px">
-            <label for="anio" class="form-label">Año</label>
-            <input id="anio" type="number" formControlName="anio" class="form-input" min="2020" />
+          <div class="form-group" style="flex: 1; min-width: 120px; margin-bottom: 0">
+            <label for="anio">Año</label>
+            <input id="anio" type="number" formControlName="anio" min="2020" />
           </div>
-          <div class="form-group" style="flex: 1; min-width: 150px">
-            <label for="fecha_desde" class="form-label">Desde</label>
-            <input id="fecha_desde" type="date" formControlName="fecha_desde" class="form-input" />
+          <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0">
+            <label>Desde</label>
+            <app-datepicker
+              formControlName="fecha_desde"
+              placeholder="Desde"
+              ariaLabel="Fecha desde"
+            />
           </div>
-          <div class="form-group" style="flex: 1; min-width: 150px">
-            <label for="fecha_hasta" class="form-label">Hasta</label>
-            <input id="fecha_hasta" type="date" formControlName="fecha_hasta" class="form-input" />
+          <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0">
+            <label>Hasta</label>
+            <app-datepicker
+              formControlName="fecha_hasta"
+              placeholder="Hasta"
+              ariaLabel="Fecha hasta"
+            />
           </div>
           <button type="submit" class="btn btn-primary" [disabled]="loading()">
             {{ loading() ? 'Cargando...' : 'Generar Reporte' }}
@@ -214,7 +224,7 @@ export class Reportes implements OnInit {
     fecha_hasta: [''],
   });
 
-  protected readonly meses = [
+  protected readonly mesOptions: ComboboxOption[] = [
     { valor: 1, nombre: 'Enero' },
     { valor: 2, nombre: 'Febrero' },
     { valor: 3, nombre: 'Marzo' },
@@ -227,7 +237,7 @@ export class Reportes implements OnInit {
     { valor: 10, nombre: 'Octubre' },
     { valor: 11, nombre: 'Noviembre' },
     { valor: 12, nombre: 'Diciembre' },
-  ];
+  ].map(m => ({ value: m.valor, label: m.nombre }));
 
   async ngOnInit(): Promise<void> {
     await this.cargar();

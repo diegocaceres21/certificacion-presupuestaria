@@ -9,11 +9,12 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Dependencia } from '../../../core/models';
 import { UnidadService } from '../../../core/services/unidad.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { Modal } from '../../../shared/components/modal/modal';
 
 @Component({
   selector: 'app-dependencias',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Modal],
   template: `
     <div class="card">
       <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
@@ -56,39 +57,27 @@ import { ToastService } from '../../../core/services/toast.service';
     </div>
 
     @if (modalAbierto()) {
-      <div class="modal-overlay" (click)="cerrarModal()" role="dialog" aria-modal="true" aria-label="Formulario de dependencia">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editandoId() ? 'Editar' : 'Nueva' }} Dependencia</h3>
-            <button class="btn-icon" (click)="cerrarModal()" aria-label="Cerrar">✕</button>
+      <app-modal [open]="modalAbierto()" [title]="editandoId() ? 'Editar Dependencia' : 'Nueva Dependencia'" ariaLabel="Formulario de dependencia" (closed)="cerrarModal()">
+        <form [formGroup]="form" (ngSubmit)="guardar()">
+          <div class="form-group">
+            <label for="codigo">Código *</label>
+            <input id="codigo" type="text" formControlName="codigo" />
           </div>
-          <div class="modal-body">
-            <form [formGroup]="form" (ngSubmit)="guardar()">
-              <div class="form-group">
-                <label for="codigo" class="form-label">Código *</label>
-                <input id="codigo" type="text" formControlName="codigo" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label for="dependencia" class="form-label">Nombre *</label>
-                <input id="dependencia" type="text" formControlName="dependencia" class="form-input" />
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary" [disabled]="form.invalid || guardando()">
-                  {{ guardando() ? 'Guardando...' : 'Guardar' }}
-                </button>
-              </div>
-            </form>
+          <div class="form-group">
+            <label for="dependencia">Nombre *</label>
+            <input id="dependencia" type="text" formControlName="dependencia" />
           </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="cerrarModal()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="form.invalid || guardando()" (click)="guardar()">
+            {{ guardando() ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
-      </div>
+      </app-modal>
     }
   `,
-  styles: `
-    .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-    .badge-active { background: #dcfce7; color: #166534; }
-    .badge-inactive { background: #fee2e2; color: #991b1b; }
-  `,
+  styles: ``,
 })
 export class Dependencias implements OnInit {
   private readonly svc = inject(UnidadService);
