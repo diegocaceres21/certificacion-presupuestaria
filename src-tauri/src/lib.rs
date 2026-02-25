@@ -23,22 +23,33 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
             // Initialize database pool
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let pool = rt.block_on(db::create_pool())
-                .expect("Failed to create database pool");
-
-            app.manage(pool);
-            log::info!("Application started successfully");
+            match rt.block_on(db::create_pool()) {
+                Ok(pool) => {
+                    app.manage(pool);
+                    log::info!("Application started successfully");
+                }
+                Err(e) => {
+                    log::error!("Database connection failed: {}", e);
+                    // Show a native error dialog so the user knows what happened
+                    rfd::MessageDialog::new()
+                        .set_title("Error de conexión")
+                        .set_description(&format!(
+                            "No se pudo iniciar la aplicación:\n\n{}\n\nVerifique su conexión de red e intente de nuevo.",
+                            e
+                        ))
+                        .set_level(rfd::MessageLevel::Error)
+                        .show();
+                    std::process::exit(1);
+                }
+            }
 
             Ok(())
         })
