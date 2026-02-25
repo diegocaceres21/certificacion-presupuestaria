@@ -290,7 +290,7 @@ pub struct CertificacionDetalle {
     pub unidad_codigo: i32,
     pub unidad_nombre: String,
     // Cuenta
-    pub cuenta_codigo: i32,
+    pub cuenta_codigo: String,
     pub cuenta_nombre: String,
     // Proyecto
     pub proyecto_nombre: Option<String>,
@@ -413,7 +413,7 @@ pub struct ReportePorUnidad {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct ReportePorCuenta {
-    pub cuenta_codigo: i32,
+    pub cuenta_codigo: String,
     pub cuenta_nombre: String,
     pub total_certificaciones: i64,
     pub monto_total: Option<Decimal>,

@@ -10,6 +10,12 @@ export class AuthService {
   private readonly _currentUser = signal<UserInfo | null>(this.loadStoredUser());
   private readonly _token = signal<string | null>(this.loadStoredToken());
 
+  constructor() {
+    // Migrate: clear any leftover data from the old localStorage-based session
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  }
+
   readonly currentUser = this._currentUser.asReadonly();
   readonly token = this._token.asReadonly();
   readonly isAuthenticated = computed(() => !!this._token() && !!this._currentUser());
@@ -20,16 +26,16 @@ export class AuthService {
     const response = await invoke<LoginResponse>('login', { request });
     this._token.set(response.token);
     this._currentUser.set(response.user);
-    localStorage.setItem(TOKEN_KEY, response.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    sessionStorage.setItem(TOKEN_KEY, response.token);
+    sessionStorage.setItem(USER_KEY, JSON.stringify(response.user));
     return response;
   }
 
   logout(): void {
     this._token.set(null);
     this._currentUser.set(null);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
   }
 
   getToken(): string {
@@ -58,11 +64,11 @@ export class AuthService {
   }
 
   private loadStoredToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+    return sessionStorage.getItem(TOKEN_KEY);
   }
 
   private loadStoredUser(): UserInfo | null {
-    const stored = localStorage.getItem(USER_KEY);
+    const stored = sessionStorage.getItem(USER_KEY);
     if (!stored) return null;
     try {
       return JSON.parse(stored) as UserInfo;

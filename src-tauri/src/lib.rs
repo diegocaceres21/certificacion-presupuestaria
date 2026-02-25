@@ -21,6 +21,14 @@ pub fn run() {
     dotenvy::dotenv().ok();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // When a second instance is launched, focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(
@@ -29,9 +37,10 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Initialize database pool
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            match rt.block_on(db::create_pool()) {
+            // Initialize database pool using Tauri's async runtime (NOT a temporary one).
+            // A temporary Runtime dropped here would kill sqlx's background connection
+            // management tasks, causing pool timeouts on the first query.
+            match tauri::async_runtime::block_on(db::create_pool()) {
                 Ok(pool) => {
                     app.manage(pool);
                     log::info!("Application started successfully");

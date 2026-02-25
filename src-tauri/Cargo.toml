@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.1"
+version = "0.2.2"
 description = "Sistema de Certificación Presupuestaria - UCB San Pablo"
 authors = ["UCB"]
 license = ""
@@ -30,6 +30,7 @@ jsonwebtoken = "9"
 dotenvy = "0.15"
 rust_decimal = { version = "1", features = ["serde-with-str"] }
 thiserror = "2"
+tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 rfd = "0.15"
