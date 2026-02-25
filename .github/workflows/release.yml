@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   release:
@@ -40,8 +41,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Certificación Presupuestaria v__VERSION__'
+          tauriScript: npx tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Certificación Presupuestaria ${{ github.ref_name }}'
           releaseBody: 'Descarga el instalador .msi para Windows.'
           releaseDraft: false
           prerelease: false
