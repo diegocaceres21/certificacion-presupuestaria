@@ -128,7 +128,7 @@ export class Cuentas implements OnInit {
   protected readonly form = this.fb.nonNullable.group({
     id_tipo_cuenta: ['', Validators.required],
     id_cuenta_padre: [''],
-    codigo: [0, Validators.required],
+    codigo: ['', Validators.required],
     cuenta: ['', Validators.required],
   });
 
@@ -152,7 +152,7 @@ export class Cuentas implements OnInit {
 
   protected abrirModal(): void {
     this.editandoId.set(null);
-    this.form.reset({ id_tipo_cuenta: '', id_cuenta_padre: '', codigo: 0, cuenta: '' });
+    this.form.reset({ id_tipo_cuenta: '', id_cuenta_padre: '', codigo: '', cuenta: '' });
     this.modalAbierto.set(true);
   }
 

@@ -25,7 +25,7 @@ export interface CertificacionDetalle {
   comentario: string | null;
   unidad_codigo: number;
   unidad_nombre: string;
-  cuenta_codigo: number;
+  cuenta_codigo: string;
   cuenta_nombre: string;
   proyecto_nombre: string | null;
   proyecto_descripcion: string | null;

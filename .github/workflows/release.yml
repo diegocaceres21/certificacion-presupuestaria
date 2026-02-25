@@ -26,9 +26,26 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Rust cache
-        uses: swatinem/rust-cache@v2
+        uses: actions/cache@v4
         with:
-          workspaces: src-tauri
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Verify required secrets
+        run: |
+          $missing = @()
+          if (-not "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}") { $missing += "TAURI_SIGNING_PRIVATE_KEY" }
+          if (-not "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}") { $missing += "TAURI_SIGNING_PRIVATE_KEY_PASSWORD" }
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing required secrets: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "All required secrets are configured"
 
       - name: Install frontend dependencies
         run: npm ci
@@ -39,7 +56,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         with:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
@@ -47,3 +63,4 @@ jobs:
           releaseBody: 'Descarga el instalador .msi para Windows.'
           releaseDraft: false
           prerelease: false
+          args: --verbose

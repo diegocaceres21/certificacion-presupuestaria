@@ -100,7 +100,7 @@ pub struct CuentaContable {
     pub id: String,
     pub id_tipo_cuenta: String,
     pub id_cuenta_padre: Option<String>,
-    pub codigo: i32,
+    pub codigo: String,
     pub cuenta: String,
     pub activo: bool,
     pub created_at: NaiveDateTime,
@@ -112,11 +112,11 @@ pub struct CuentaContableDetalle {
     pub id: String,
     pub id_tipo_cuenta: String,
     pub id_cuenta_padre: Option<String>,
-    pub codigo: i32,
+    pub codigo: String,
     pub cuenta: String,
     pub activo: bool,
     pub tipo_cuenta_nombre: String,
-    pub cuenta_padre_codigo: Option<i32>,
+    pub cuenta_padre_codigo: Option<String>,
     pub cuenta_padre_nombre: Option<String>,
 }
 
@@ -124,7 +124,7 @@ pub struct CuentaContableDetalle {
 pub struct CrearCuenta {
     pub id_tipo_cuenta: String,
     pub id_cuenta_padre: Option<String>,
-    pub codigo: i32,
+    pub codigo: String,
     pub cuenta: String,
 }
 
@@ -132,7 +132,7 @@ pub struct CrearCuenta {
 pub struct EditarCuenta {
     pub id_tipo_cuenta: Option<String>,
     pub id_cuenta_padre: Option<Option<String>>,
-    pub codigo: Option<i32>,
+    pub codigo: Option<String>,
     pub cuenta: Option<String>,
     pub activo: Option<bool>,
 }
