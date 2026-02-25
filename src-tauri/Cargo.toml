@@ -30,3 +30,5 @@ jsonwebtoken = "9"
 dotenvy = "0.15"
 rust_decimal = { version = "1", features = ["serde-with-str"] }
 thiserror = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

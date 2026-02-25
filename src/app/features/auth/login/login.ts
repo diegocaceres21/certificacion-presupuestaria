@@ -1,7 +1,8 @@
-import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { getVersion } from '@tauri-apps/api/app';
 
 @Component({
   selector: 'app-login',
@@ -62,6 +63,7 @@ import { AuthService } from '../../../core/services/auth.service';
 
         <div class="login-footer">
           <p>Sistema de Gestión Presupuestaria — UCB</p>
+          <p class="login-version">v{{ appVersion() }}</p>
         </div>
       </div>
     </div>
@@ -168,15 +170,22 @@ import { AuthService } from '../../../core/services/auth.service';
       color: var(--color-ucb-gray-500);
       margin: 0;
     }
+
+    .login-version {
+      margin-top: 0.25rem !important;
+      font-size: 0.625rem !important;
+      color: var(--color-ucb-gray-400) !important;
+    }
   `],
 })
-export class Login {
+export class Login implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
 
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
+  protected readonly appVersion = signal('...');
 
   protected readonly form = this.fb.nonNullable.group({
     usuario: ['', Validators.required],
@@ -186,6 +195,14 @@ export class Login {
   constructor() {
     if (this.auth.isAuthenticated()) {
       this.router.navigate(['/dashboard']);
+    }
+  }
+
+  async ngOnInit(): Promise<void> {
+    try {
+      this.appVersion.set(await getVersion());
+    } catch {
+      this.appVersion.set('0.1.0');
     }
   }
 

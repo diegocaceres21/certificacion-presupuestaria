@@ -1,12 +1,14 @@
-import { Component, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../core/services/toast.service';
+import { UpdateService } from '../../core/services/update.service';
+import { UpdateDialog } from '../../shared/components/update-dialog/update-dialog';
 
 @Component({
   selector: 'app-main-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, UpdateDialog],
   template: `
     <!-- Header -->
     <header class="app-header no-print">
@@ -142,6 +144,9 @@ import { ToastService } from '../../core/services/toast.service';
         }
       </div>
     }
+
+    <!-- Update dialog -->
+    <app-update-dialog />
   `,
   styles: [`
     :host {
@@ -290,10 +295,15 @@ import { ToastService } from '../../core/services/toast.service';
     }
   `],
 })
-export class MainLayout {
+export class MainLayout implements OnInit {
   protected readonly auth = inject(AuthService);
   protected readonly toastService = inject(ToastService);
+  private readonly updateService = inject(UpdateService);
   protected readonly sidebarCollapsed = signal(false);
+
+  async ngOnInit(): Promise<void> {
+    await this.updateService.checkForUpdate();
+  }
 
   protected toggleSidebar(): void {
     this.sidebarCollapsed.update((v) => !v);
