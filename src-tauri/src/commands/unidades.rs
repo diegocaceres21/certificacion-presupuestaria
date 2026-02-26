@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -10,7 +10,7 @@ use crate::models::*;
 // ============================================
 #[tauri::command]
 pub async fn listar_dependencias(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<Dependencia>, String> {
     let _claims = auth::validate_token(&token)
@@ -26,7 +26,7 @@ pub async fn listar_dependencias(
 
 #[tauri::command]
 pub async fn crear_dependencia(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearDependencia,
 ) -> Result<Dependencia, String> {
@@ -56,7 +56,7 @@ pub async fn crear_dependencia(
 
 #[tauri::command]
 pub async fn editar_dependencia(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarDependencia,
@@ -96,7 +96,7 @@ pub async fn editar_dependencia(
 // ============================================
 #[tauri::command]
 pub async fn listar_unidades(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<UnidadConDependencia>, String> {
     let _claims = auth::validate_token(&token)
@@ -117,7 +117,7 @@ pub async fn listar_unidades(
 
 #[tauri::command]
 pub async fn crear_unidad(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearUnidad,
 ) -> Result<UnidadConDependencia, String> {
@@ -155,7 +155,7 @@ pub async fn crear_unidad(
 
 #[tauri::command]
 pub async fn editar_unidad(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarUnidad,

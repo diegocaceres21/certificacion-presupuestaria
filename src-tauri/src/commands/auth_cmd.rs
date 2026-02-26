@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 
 use crate::auth;
@@ -6,7 +6,7 @@ use crate::models::{LoginRequest, LoginResponse, UserInfo};
 
 #[tauri::command]
 pub async fn login(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     request: LoginRequest,
 ) -> Result<LoginResponse, String> {
     let row = sqlx::query_as::<_, (String, String, bool)>(
@@ -70,7 +70,7 @@ pub async fn verify_token(token: String) -> Result<UserInfo, String> {
 
 #[tauri::command]
 pub async fn cambiar_password(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     password_actual: String,
     password_nueva: String,

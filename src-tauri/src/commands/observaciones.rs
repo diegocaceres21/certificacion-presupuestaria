@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn listar_observaciones(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id_certificacion: String,
 ) -> Result<Vec<ObservacionDetalle>, String> {
@@ -35,7 +35,7 @@ pub async fn listar_observaciones(
 
 #[tauri::command]
 pub async fn crear_observacion(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearObservacion,
 ) -> Result<ObservacionDetalle, String> {
@@ -49,7 +49,7 @@ pub async fn crear_observacion(
     let id = Uuid::new_v4().to_string();
 
     sqlx::query(
-        "INSERT INTO observacion_certificacion (id, id_certificacion, creado_por, comentario) VALUES (?, ?, ?, ?)"
+        "INSERT INTO observacion_certificacion (id, id_certificacion, creado_por, comentario, sync_status) VALUES (?, ?, ?, ?, 'pending')"
     )
     .bind(&id)
     .bind(&data.id_certificacion)

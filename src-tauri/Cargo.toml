@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.2"
+version = "0.2.3"
 description = "Sistema de Certificación Presupuestaria - UCB San Pablo"
 authors = ["UCB"]
 license = ""
@@ -21,16 +21,16 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.10.0", features = ["tray-icon"] }
 tauri-plugin-log = "2"
-sqlx = { version = "0.8", features = ["runtime-tokio", "mysql", "uuid", "chrono", "rust_decimal"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "chrono"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 bcrypt = "0.16"
 jsonwebtoken = "9"
 dotenvy = "0.15"
-rust_decimal = { version = "1", features = ["serde-with-str"] }
 thiserror = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 rfd = "0.15"
+reqwest = { version = "0.12", features = ["json"] }

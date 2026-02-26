@@ -5,5 +5,6 @@ export * from './modificacion.model';
 export * from './observacion.model';
 export * from './proyecto.model';
 export * from './reporte.model';
+export * from './sync.model';
 export * from './unidad.model';
 export * from './usuario.model';

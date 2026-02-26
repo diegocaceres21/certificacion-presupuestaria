@@ -5,6 +5,7 @@ pub mod modificaciones;
 pub mod observaciones;
 pub mod proyectos;
 pub mod reportes;
+pub mod sync_cmd;
 pub mod tipo_cuentas;
 pub mod unidades;
 pub mod usuarios;

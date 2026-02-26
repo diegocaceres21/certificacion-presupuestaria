@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 
 use crate::auth;
@@ -6,7 +6,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn obtener_reporte(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     filtros: Option<FiltrosReporte>,
 ) -> Result<ReporteCompleto, String> {
@@ -118,10 +118,10 @@ fn build_date_filter(filtros: &FiltrosReporte) -> String {
         conditions.push(format!("AND c.fecha_certificacion <= '{}'", fecha_hasta));
     }
     if let Some(mes) = filtros.mes {
-        conditions.push(format!("AND MONTH(c.fecha_certificacion) = {}", mes));
+        conditions.push(format!("AND CAST(strftime('%m', c.fecha_certificacion) AS INTEGER) = {}", mes));
     }
     if let Some(anio) = filtros.anio {
-        conditions.push(format!("AND YEAR(c.fecha_certificacion) = {}", anio));
+        conditions.push(format!("AND CAST(strftime('%Y', c.fecha_certificacion) AS INTEGER) = {}", anio));
     }
 
     conditions.join(" ")

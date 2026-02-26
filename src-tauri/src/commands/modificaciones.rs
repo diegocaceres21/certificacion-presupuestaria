@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 
 use crate::auth;
@@ -6,7 +6,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn listar_modificaciones(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id_certificacion: String,
 ) -> Result<Vec<ModificacionDetalle>, String> {

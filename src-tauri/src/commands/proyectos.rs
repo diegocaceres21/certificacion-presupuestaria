@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn listar_proyectos(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<Proyecto>, String> {
     let _claims = auth::validate_token(&token)
@@ -23,7 +23,7 @@ pub async fn listar_proyectos(
 
 #[tauri::command]
 pub async fn crear_proyecto(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearProyecto,
 ) -> Result<Proyecto, String> {
@@ -54,7 +54,7 @@ pub async fn crear_proyecto(
 
 #[tauri::command]
 pub async fn editar_proyecto(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarProyecto,

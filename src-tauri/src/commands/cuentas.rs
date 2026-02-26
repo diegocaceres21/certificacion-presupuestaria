@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ fn calcular_nivel(codigo: &str) -> Result<i32, String> {
 
 #[tauri::command]
 pub async fn listar_cuentas(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<CuentaContableDetalle>, String> {
     let _claims = auth::validate_token(&token)
@@ -45,7 +45,7 @@ pub async fn listar_cuentas(
 
 #[tauri::command]
 pub async fn crear_cuenta(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearCuenta,
 ) -> Result<CuentaContable, String> {
@@ -101,7 +101,7 @@ pub async fn crear_cuenta(
 
 #[tauri::command]
 pub async fn editar_cuenta(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarCuenta,

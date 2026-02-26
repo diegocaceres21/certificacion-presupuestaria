@@ -1,7 +1,14 @@
 use chrono::{NaiveDate, NaiveDateTime};
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+
+// ============================================
+// App Config (managed state)
+// ============================================
+#[derive(Debug, Clone)]
+pub struct ApiConfig {
+    pub base_url: Option<String>,
+}
 
 // ============================================
 // Dependencia
@@ -272,7 +279,7 @@ pub struct Certificacion {
     pub nro_certificacion: i32,
     pub anio_certificacion: i32,
     pub fecha_certificacion: NaiveDate,
-    pub monto_total: Decimal,
+    pub monto_total: String,
     pub comentario: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
@@ -286,7 +293,7 @@ pub struct CertificacionDetalle {
     pub anio_certificacion: i32,
     pub fecha_certificacion: NaiveDate,
     pub concepto: String,
-    pub monto_total: Decimal,
+    pub monto_total: String,
     pub comentario: Option<String>,
     // Unidad
     pub unidad_codigo: i32,
@@ -312,7 +319,7 @@ pub struct CrearCertificacion {
     pub id_cuenta_contable: String,
     pub id_proyecto: Option<String>,
     pub concepto: String,
-    pub monto_total: Decimal,
+    pub monto_total: String,
     pub comentario: Option<String>,
 }
 
@@ -322,7 +329,7 @@ pub struct EditarCertificacion {
     pub id_cuenta_contable: Option<String>,
     pub id_proyecto: Option<String>,
     pub concepto: Option<String>,
-    pub monto_total: Option<Decimal>,
+    pub monto_total: Option<String>,
     pub comentario: Option<String>,
 }
 
@@ -345,8 +352,8 @@ pub struct Modificacion {
     pub id: String,
     pub id_certificacion: String,
     pub modificado_por: String,
-    pub monto_antiguo: Option<Decimal>,
-    pub monto_nuevo: Option<Decimal>,
+    pub monto_antiguo: Option<String>,
+    pub monto_nuevo: Option<String>,
     pub concepto_antiguo: Option<String>,
     pub concepto_nuevo: Option<String>,
     pub fecha_hora: NaiveDateTime,
@@ -361,8 +368,8 @@ pub struct ModificacionDetalle {
     pub id: String,
     pub id_certificacion: String,
     pub modificado_por_nombre: String,
-    pub monto_antiguo: Option<Decimal>,
-    pub monto_nuevo: Option<Decimal>,
+    pub monto_antiguo: Option<String>,
+    pub monto_nuevo: Option<String>,
     pub concepto_antiguo: Option<String>,
     pub concepto_nuevo: Option<String>,
     pub fecha_hora: NaiveDateTime,
@@ -402,7 +409,7 @@ pub struct CrearObservacion {
 #[derive(Debug, Serialize, FromRow)]
 pub struct ReporteResumen {
     pub total_certificaciones: i64,
-    pub monto_total: Option<Decimal>,
+    pub monto_total: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -410,7 +417,7 @@ pub struct ReportePorUnidad {
     pub unidad_codigo: i32,
     pub unidad_nombre: String,
     pub total_certificaciones: i64,
-    pub monto_total: Option<Decimal>,
+    pub monto_total: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -419,14 +426,14 @@ pub struct ReportePorCuenta {
     pub cuenta_nombre: String,
     pub nivel: i32,
     pub total_certificaciones: i64,
-    pub monto_total: Option<Decimal>,
+    pub monto_total: Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct ReportePorProyecto {
     pub proyecto_nombre: String,
     pub total_certificaciones: i64,
-    pub monto_total: Option<Decimal>,
+    pub monto_total: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -445,7 +452,7 @@ pub struct ReporteCuentaJerarquico {
     pub nivel: i32,
     pub id_cuenta_padre: Option<String>,
     pub total_certificaciones: i64,
-    pub monto_total: Option<Decimal>,
+    pub monto_total: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -455,4 +462,164 @@ pub struct ReporteCompleto {
     pub por_cuenta: Vec<ReportePorCuenta>,
     pub por_proyecto: Vec<ReportePorProyecto>,
     pub por_cuenta_jerarquico: Vec<ReporteCuentaJerarquico>,
+}
+
+// ============================================
+// Sync
+// ============================================
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncStatus {
+    pub last_sync: Option<String>,
+    pub pending_count: i64,
+    pub is_online: bool,
+}
+
+/// Row returned by the server pull endpoint for certificaciones
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncCertificacionRow {
+    pub id: String,
+    pub id_unidad: String,
+    pub id_cuenta_contable: String,
+    pub id_proyecto: Option<String>,
+    pub generado_por: String,
+    pub concepto: String,
+    pub nro_certificacion: i32,
+    pub anio_certificacion: i32,
+    pub fecha_certificacion: String,
+    pub monto_total: String,
+    pub comentario: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncModificacionRow {
+    pub id: String,
+    pub id_certificacion: String,
+    pub modificado_por: String,
+    pub monto_antiguo: Option<String>,
+    pub monto_nuevo: Option<String>,
+    pub concepto_antiguo: Option<String>,
+    pub concepto_nuevo: Option<String>,
+    pub fecha_hora: String,
+    pub comentario: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncObservacionRow {
+    pub id: String,
+    pub id_certificacion: String,
+    pub creado_por: String,
+    pub comentario: String,
+    pub created_at: String,
+}
+
+/// Catalog rows from server pull
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncDependenciaRow {
+    pub id: String,
+    pub codigo: String,
+    pub dependencia: String,
+    pub activo: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncTipoCuentaRow {
+    pub id: String,
+    pub tipo: String,
+    pub activo: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncUnidadRow {
+    pub id: String,
+    pub id_dependencia: String,
+    pub codigo: i32,
+    pub unidad: String,
+    pub activo: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncCuentaContableRow {
+    pub id: String,
+    pub id_tipo_cuenta: String,
+    pub id_cuenta_padre: Option<String>,
+    pub codigo: String,
+    pub cuenta: String,
+    pub nivel: i32,
+    pub activo: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncProyectoRow {
+    pub id: String,
+    pub nombre: String,
+    pub descripcion: Option<String>,
+    pub pei: Option<String>,
+    pub activo: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncUsuarioRow {
+    pub id: String,
+    pub usuario: String,
+    pub password: String,
+    pub activo: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPerfilRow {
+    pub id: String,
+    pub id_usuario: String,
+    pub nombre_completo: String,
+    pub cargo: String,
+    pub rol: String,
+}
+
+/// Server pull response structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPullResponse {
+    pub server_time: String,
+    pub catalogs: SyncCatalogs,
+    pub certificaciones: Vec<SyncCertificacionRow>,
+    pub modificaciones: Vec<SyncModificacionRow>,
+    pub observaciones: Vec<SyncObservacionRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncCatalogs {
+    pub dependencias: Vec<SyncDependenciaRow>,
+    pub tipo_cuentas: Vec<SyncTipoCuentaRow>,
+    pub unidades: Vec<SyncUnidadRow>,
+    pub cuentas_contables: Vec<SyncCuentaContableRow>,
+    pub proyectos: Vec<SyncProyectoRow>,
+    pub usuarios: Vec<SyncUsuarioRow>,
+    pub perfiles: Vec<SyncPerfilRow>,
+}
+
+/// Payload sent to server push endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPushPayload {
+    pub certificaciones: Vec<SyncCertificacionRow>,
+    pub modificaciones: Vec<SyncModificacionRow>,
+    pub observaciones: Vec<SyncObservacionRow>,
+}
+
+/// Server push response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPushResponse {
+    pub accepted: Vec<String>,
+    pub conflicts: Vec<SyncConflict>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncConflict {
+    pub id: String,
+    pub table_name: String,
+    pub server_version: serde_json::Value,
+    pub message: String,
 }

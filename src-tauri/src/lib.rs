@@ -2,6 +2,7 @@ mod auth;
 mod commands;
 mod db;
 mod models;
+mod sync;
 
 use tauri::Manager;
 use commands::auth_cmd;
@@ -14,6 +15,7 @@ use commands::reportes;
 use commands::tipo_cuentas;
 use commands::unidades;
 use commands::usuarios;
+use commands::sync_cmd;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,21 +39,25 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Initialize database pool using Tauri's async runtime (NOT a temporary one).
-            // A temporary Runtime dropped here would kill sqlx's background connection
-            // management tasks, causing pool timeouts on the first query.
-            match tauri::async_runtime::block_on(db::create_pool()) {
+            // Resolve local database path in the app data directory
+            let app_data_dir = app.path().app_data_dir()
+                .map_err(|e| format!("No se pudo obtener el directorio de datos: {}", e))
+                .expect("app data dir");
+            let db_path = db::resolve_db_path(&app_data_dir)
+                .expect("resolve db path");
+
+            // Initialize SQLite pool using Tauri's async runtime
+            match tauri::async_runtime::block_on(db::create_pool(&db_path)) {
                 Ok(pool) => {
                     app.manage(pool);
-                    log::info!("Application started successfully");
+                    log::info!("Local database initialized successfully");
                 }
                 Err(e) => {
-                    log::error!("Database connection failed: {}", e);
-                    // Show a native error dialog so the user knows what happened
+                    log::error!("Local database init failed: {}", e);
                     rfd::MessageDialog::new()
-                        .set_title("Error de conexión")
+                        .set_title("Error de base de datos")
                         .set_description(&format!(
-                            "No se pudo iniciar la aplicación:\n\n{}\n\nVerifique su conexión de red e intente de nuevo.",
+                            "No se pudo iniciar la aplicación:\n\n{}\n\nIntente de nuevo.",
                             e
                         ))
                         .set_level(rfd::MessageLevel::Error)
@@ -59,6 +65,18 @@ pub fn run() {
                     std::process::exit(1);
                 }
             }
+
+            // Store API URL in managed state (may be None if not configured)
+            let api_url = db::resolve_api_url();
+            app.manage(models::ApiConfig { base_url: api_url });
+
+            // Trigger initial sync in background (non-blocking)
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = sync::run_initial_sync(&app_handle).await {
+                    log::warn!("Initial sync failed (working offline): {}", e);
+                }
+            });
 
             Ok(())
         })
@@ -105,7 +123,21 @@ pub fn run() {
             usuarios::resetear_password,
             // Reportes
             reportes::obtener_reporte,
+            // Sync
+            sync_cmd::sync_now,
+            sync_cmd::get_sync_status,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // Push pending changes before closing
+                let app_handle = window.app_handle().clone();
+                tauri::async_runtime::block_on(async {
+                    if let Err(e) = sync::push_pending(&app_handle).await {
+                        log::warn!("Sync on close failed: {}", e);
+                    }
+                });
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

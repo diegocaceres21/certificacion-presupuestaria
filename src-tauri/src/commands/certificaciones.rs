@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -8,7 +8,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn listar_certificaciones(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     filtros: Option<FiltrosCertificacion>,
 ) -> Result<Vec<CertificacionDetalle>, String> {
@@ -63,7 +63,7 @@ pub async fn listar_certificaciones(
         params.push(fecha_hasta.clone());
     }
     if let Some(ref busqueda) = filtros.busqueda {
-        query.push_str(" AND (c.concepto LIKE ? OR CAST(c.nro_certificacion AS CHAR) LIKE ?)");
+        query.push_str(" AND (c.concepto LIKE ? OR CAST(c.nro_certificacion AS TEXT) LIKE ?)");
         let like_param = format!("%{}%", busqueda);
         params.push(like_param.clone());
         params.push(like_param);
@@ -85,7 +85,7 @@ pub async fn listar_certificaciones(
 
 #[tauri::command]
 pub async fn obtener_certificacion(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
 ) -> Result<CertificacionDetalle, String> {
@@ -120,7 +120,7 @@ pub async fn obtener_certificacion(
 
 #[tauri::command]
 pub async fn crear_certificacion(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearCertificacion,
 ) -> Result<CertificacionDetalle, String> {
@@ -147,8 +147,8 @@ pub async fn crear_certificacion(
     let fecha = Utc::now().naive_utc().date();
 
     sqlx::query(
-        "INSERT INTO certificacion (id, id_unidad, id_cuenta_contable, id_proyecto, generado_por, concepto, nro_certificacion, anio_certificacion, fecha_certificacion, monto_total, comentario)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO certificacion (id, id_unidad, id_cuenta_contable, id_proyecto, generado_por, concepto, nro_certificacion, anio_certificacion, fecha_certificacion, monto_total, comentario, sync_status, local_updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))"
     )
     .bind(&id)
     .bind(&data.id_unidad)
@@ -170,7 +170,7 @@ pub async fn crear_certificacion(
         if !comentario.trim().is_empty() {
             let obs_id = Uuid::new_v4().to_string();
             sqlx::query(
-                "INSERT INTO observacion_certificacion (id, id_certificacion, creado_por, comentario) VALUES (?, ?, ?, ?)"
+                "INSERT INTO observacion_certificacion (id, id_certificacion, creado_por, comentario, sync_status) VALUES (?, ?, ?, ?, 'pending')"
             )
             .bind(&obs_id)
             .bind(&id)
@@ -187,7 +187,7 @@ pub async fn crear_certificacion(
 
 #[tauri::command]
 pub async fn editar_certificacion(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarCertificacion,
@@ -216,12 +216,12 @@ pub async fn editar_certificacion(
 
     // Create modification record
     let mod_id = Uuid::new_v4().to_string();
-    let monto_antiguo = if data.monto_total.is_some() { Some(current.monto_total) } else { None };
+    let monto_antiguo = if data.monto_total.is_some() { Some(current.monto_total.clone()) } else { None };
     let concepto_antiguo = if data.concepto.is_some() { Some(current.concepto.clone()) } else { None };
 
     sqlx::query(
-        "INSERT INTO modificacion (id, id_certificacion, modificado_por, monto_antiguo, monto_nuevo, concepto_antiguo, concepto_nuevo, fecha_hora, comentario)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)"
+        "INSERT INTO modificacion (id, id_certificacion, modificado_por, monto_antiguo, monto_nuevo, concepto_antiguo, concepto_nuevo, fecha_hora, comentario, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, 'pending')"
     )
     .bind(&mod_id)
     .bind(&id)
@@ -244,7 +244,7 @@ pub async fn editar_certificacion(
     let new_comentario = data.comentario.or(current.comentario);
 
     sqlx::query(
-        "UPDATE certificacion SET id_unidad = ?, id_cuenta_contable = ?, id_proyecto = ?, concepto = ?, monto_total = ?, comentario = ? WHERE id = ?"
+        "UPDATE certificacion SET id_unidad = ?, id_cuenta_contable = ?, id_proyecto = ?, concepto = ?, monto_total = ?, comentario = ?, sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ?"
     )
     .bind(&new_unidad)
     .bind(&new_cuenta)
@@ -262,7 +262,7 @@ pub async fn editar_certificacion(
 
 #[tauri::command]
 pub async fn eliminar_certificacion(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
 ) -> Result<String, String> {
@@ -273,7 +273,7 @@ pub async fn eliminar_certificacion(
         return Err("Solo un administrador puede eliminar certificaciones".to_string());
     }
 
-    sqlx::query("UPDATE certificacion SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL")
+    sqlx::query("UPDATE certificacion SET deleted_at = datetime('now'), sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ? AND deleted_at IS NULL")
         .bind(&id)
         .execute(pool.inner())
         .await
@@ -283,7 +283,7 @@ pub async fn eliminar_certificacion(
 }
 
 async fn obtener_certificacion_internal(
-    pool: &MySqlPool,
+    pool: &SqlitePool,
     id: &str,
 ) -> Result<CertificacionDetalle, String> {
     sqlx::query_as::<_, CertificacionDetalle>(

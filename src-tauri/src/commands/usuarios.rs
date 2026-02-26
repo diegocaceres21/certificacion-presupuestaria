@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn listar_usuarios(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<UsuarioConPerfil>, String> {
     let claims = auth::validate_token(&token)
@@ -32,7 +32,7 @@ pub async fn listar_usuarios(
 
 #[tauri::command]
 pub async fn listar_usuarios_simple(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<UsuarioConPerfil>, String> {
     let _claims = auth::validate_token(&token)
@@ -44,7 +44,7 @@ pub async fn listar_usuarios_simple(
             p.nombre_completo, p.cargo, p.rol
         FROM usuario u
         INNER JOIN perfil p ON p.id_usuario = u.id
-        WHERE u.activo = TRUE
+        WHERE u.activo = 1
         ORDER BY p.nombre_completo"
     )
     .fetch_all(pool.inner())
@@ -54,7 +54,7 @@ pub async fn listar_usuarios_simple(
 
 #[tauri::command]
 pub async fn crear_usuario(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearUsuario,
 ) -> Result<UsuarioConPerfil, String> {
@@ -101,7 +101,7 @@ pub async fn crear_usuario(
 
 #[tauri::command]
 pub async fn editar_usuario(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarUsuario,
@@ -151,7 +151,7 @@ pub async fn editar_usuario(
 
 #[tauri::command]
 pub async fn resetear_password(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     nueva_password: String,

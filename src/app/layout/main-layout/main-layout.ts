@@ -1,6 +1,7 @@
-import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { SyncService } from '../../core/services/sync.service';
 import { ToastService } from '../../core/services/toast.service';
 import { UpdateService } from '../../core/services/update.service';
 import { UpdateDialog } from '../../shared/components/update-dialog/update-dialog';
@@ -24,6 +25,21 @@ import { UpdateDialog } from '../../shared/components/update-dialog/update-dialo
         </div>
       </div>
       <div class="header-right">
+        <button
+          class="btn btn-sm sync-btn"
+          [class.syncing]="syncService.syncing()"
+          [class.offline]="!syncService.isOnline()"
+          (click)="triggerSync()"
+          [attr.aria-label]="syncService.isOnline() ? 'Sincronizar ahora' : 'Sin conexión'"
+          [title]="syncStatusTooltip()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" [class.spin]="syncService.syncing()">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          </svg>
+          @if (syncService.pendingCount() > 0) {
+            <span class="sync-badge">{{ syncService.pendingCount() }}</span>
+          }
+        </button>
         <div class="header-user">
           <div class="header-user-info">
             <span class="header-user-name">{{ auth.currentUser()?.nombre_completo }}</span>
@@ -209,6 +225,54 @@ import { UpdateDialog } from '../../shared/components/update-dialog/update-dialo
     .header-right {
       display: flex;
       align-items: center;
+      gap: 0.75rem;
+    }
+
+    .sync-btn {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.375rem;
+      border-radius: 0.375rem;
+      background: transparent;
+      border: 1px solid var(--color-ucb-gray-200);
+      color: var(--color-ucb-gray-600);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .sync-btn:hover {
+      background: var(--color-ucb-gray-50);
+      color: var(--color-ucb-primary);
+    }
+    .sync-btn.syncing {
+      color: var(--color-ucb-primary);
+      pointer-events: none;
+    }
+    .sync-btn.offline {
+      color: var(--color-ucb-gray-400);
+    }
+    .sync-btn .spin {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .sync-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      background: var(--color-ucb-primary);
+      color: white;
+      font-size: 0.625rem;
+      font-weight: 700;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .header-user {
@@ -306,21 +370,43 @@ import { UpdateDialog } from '../../shared/components/update-dialog/update-dialo
     }
   `],
 })
-export class MainLayout implements OnInit {
+export class MainLayout implements OnInit, OnDestroy {
   protected readonly auth = inject(AuthService);
+  protected readonly syncService = inject(SyncService);
   protected readonly toastService = inject(ToastService);
   private readonly updateService = inject(UpdateService);
   protected readonly sidebarCollapsed = signal(false);
 
+  protected readonly syncStatusTooltip = computed(() => {
+    const s = this.syncService.status();
+    if (!s.is_online) return 'Sin conexión al servidor';
+    if (s.pending_count > 0) return `${s.pending_count} cambios pendientes`;
+    if (s.last_sync) return `Última sincronización: ${new Date(s.last_sync).toLocaleTimeString()}`;
+    return 'Sincronizado';
+  });
+
   async ngOnInit(): Promise<void> {
     await this.updateService.checkForUpdate();
+    this.syncService.startPeriodicSync();
+  }
+
+  ngOnDestroy(): void {
+    this.syncService.stopPeriodicSync();
   }
 
   protected toggleSidebar(): void {
     this.sidebarCollapsed.update((v) => !v);
   }
 
+  protected async triggerSync(): Promise<void> {
+    const result = await this.syncService.syncNow();
+    if (result) {
+      this.toastService.success('Sincronización completada');
+    }
+  }
+
   protected logout(): void {
+    this.syncService.stopPeriodicSync();
     this.auth.logout();
     window.location.href = '/login';
   }

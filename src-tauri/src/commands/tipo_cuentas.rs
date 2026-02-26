@@ -1,4 +1,4 @@
-use sqlx::MySqlPool;
+use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ use crate::models::*;
 
 #[tauri::command]
 pub async fn listar_tipo_cuentas(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
 ) -> Result<Vec<TipoCuenta>, String> {
     let _claims = auth::validate_token(&token)
@@ -23,7 +23,7 @@ pub async fn listar_tipo_cuentas(
 
 #[tauri::command]
 pub async fn crear_tipo_cuenta(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     data: CrearTipoCuenta,
 ) -> Result<TipoCuenta, String> {
@@ -52,7 +52,7 @@ pub async fn crear_tipo_cuenta(
 
 #[tauri::command]
 pub async fn editar_tipo_cuenta(
-    pool: State<'_, MySqlPool>,
+    pool: State<'_, SqlitePool>,
     token: String,
     id: String,
     data: EditarTipoCuenta,
