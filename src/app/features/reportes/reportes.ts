@@ -11,13 +11,23 @@ import { DecimalPipe } from '@angular/common';
 import {
   ReporteCompleto,
   ReportePorUnidad,
-  ReportePorCuenta,
   ReportePorProyecto,
+  ReporteCuentaJerarquico,
 } from '../../core/models';
 import { ReporteService } from '../../core/services/reporte.service';
 import { ToastService } from '../../core/services/toast.service';
 import { Combobox, ComboboxOption } from '../../shared/components/combobox/combobox';
 import { Datepicker } from '../../shared/components/datepicker/datepicker';
+
+interface CuentaReporteNode {
+  data: ReporteCuentaJerarquico;
+  children: CuentaReporteNode[];
+  depth: number;
+  /** Aggregated total_certificaciones including children */
+  aggCertificaciones: number;
+  /** Aggregated monto_total including children */
+  aggMonto: number;
+}
 
 @Component({
   selector: 'app-reportes',
@@ -88,7 +98,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
           <div class="summary-label">Unidades</div>
         </div>
         <div class="summary-card">
-          <div class="summary-value">{{ r.por_cuenta.length }}</div>
+          <div class="summary-value">{{ r.por_cuenta_jerarquico.length }}</div>
           <div class="summary-label">Cuentas</div>
         </div>
       </div>
@@ -122,26 +132,57 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
         </div>
       </div>
 
-      <!-- Por Cuenta -->
+      <!-- Por Cuenta (Jerárquico) -->
       <div class="card" style="margin-bottom: 1.5rem">
-        <div class="card-header"><h3>Por Cuenta Contable</h3></div>
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center">
+          <h3>Por Cuenta Contable (Jerárquico)</h3>
+          <div style="display: flex; gap: 0.5rem">
+            <button class="btn btn-secondary btn-sm" (click)="expandirTodoCuentas()">Expandir todo</button>
+            <button class="btn btn-secondary btn-sm" (click)="colapsarTodoCuentas()">Colapsar todo</button>
+          </div>
+        </div>
         <div class="card-body" style="padding:0">
-          <table class="data-table" aria-label="Reporte por cuenta">
+          <table class="data-table" aria-label="Reporte jerárquico por cuenta">
             <thead>
               <tr>
-                <th>Código</th>
-                <th>Cuenta</th>
+                <th style="min-width: 350px">Código / Cuenta</th>
                 <th style="text-align:right">Certificaciones</th>
                 <th style="text-align:right">Monto Total (Bs)</th>
               </tr>
             </thead>
             <tbody>
-              @for (c of r.por_cuenta; track c.cuenta_codigo) {
-                <tr>
-                  <td>{{ c.cuenta_codigo }}</td>
-                  <td>{{ c.cuenta_nombre }}</td>
-                  <td style="text-align:right">{{ c.total_certificaciones }}</td>
-                  <td style="text-align:right">{{ (c.monto_total ?? '0') | number:'1.2-2' }}</td>
+              @for (row of visibleCuentaRows(); track row.data.cuenta_id) {
+                <tr [style.background]="row.depth === 0 ? 'var(--color-ucb-gray-50)' : ''"
+                    [style.font-weight]="row.data.nivel < 5 ? '600' : '400'">
+                  <td>
+                    <div style="display: flex; align-items: center" [style.padding-left.rem]="row.depth * 1.5">
+                      @if (row.children.length > 0) {
+                        <button
+                          class="btn-icon"
+                          style="padding: 0.125rem; margin-right: 0.25rem"
+                          (click)="toggleExpandCuenta(row.data.cuenta_id)"
+                          [attr.aria-label]="expandedCuentaIds().has(row.data.cuenta_id) ? 'Colapsar' : 'Expandir'"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            @if (expandedCuentaIds().has(row.data.cuenta_id)) {
+                              <polyline points="6 9 12 15 18 9"/>
+                            } @else {
+                              <polyline points="9 6 15 12 9 18"/>
+                            }
+                          </svg>
+                        </button>
+                      } @else {
+                        <span style="display: inline-block; width: 22px"></span>
+                      }
+                      <span>
+                        <span style="color: var(--color-ucb-primary)">{{ row.data.cuenta_codigo }}</span>
+                        <span style="margin-left: 0.5rem">{{ row.data.cuenta_nombre }}</span>
+                      </span>
+                    </div>
+                  </td>
+                  
+                  <td style="text-align:right">{{ row.aggCertificaciones }}</td>
+                  <td style="text-align:right">{{ row.aggMonto | number:'1.2-2' }}</td>
                 </tr>
               } @empty {
                 <tr><td colspan="4" style="text-align:center;padding:1rem">Sin datos</td></tr>
@@ -216,6 +257,7 @@ export class Reportes implements OnInit {
 
   protected readonly reporte = signal<ReporteCompleto | null>(null);
   protected readonly loading = signal(false);
+  protected readonly expandedCuentaIds = signal<Set<string>>(new Set());
 
   protected readonly filtros = this.fb.group({
     mes: [null as number | null],
@@ -239,6 +281,61 @@ export class Reportes implements OnInit {
     { valor: 12, nombre: 'Diciembre' },
   ].map(m => ({ value: m.valor, label: m.nombre }));
 
+  // Build hierarchical tree from por_cuenta_jerarquico data
+  private readonly cuentaTree = computed<CuentaReporteNode[]>(() => {
+    const r = this.reporte();
+    if (!r) return [];
+    const items = r.por_cuenta_jerarquico ?? [];
+    const map = new Map<string, CuentaReporteNode>();
+    for (const item of items) {
+      map.set(item.cuenta_id, {
+        data: item,
+        children: [],
+        depth: 0,
+        aggCertificaciones: item.total_certificaciones,
+        aggMonto: Number(item.monto_total) || 0,
+      });
+    }
+    const roots: CuentaReporteNode[] = [];
+    for (const node of map.values()) {
+      const parentId = node.data.id_cuenta_padre;
+      if (parentId && map.has(parentId)) {
+        map.get(parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    // Set depths and aggregate bottom-up
+    const aggregate = (nodes: CuentaReporteNode[], depth: number): void => {
+      for (const n of nodes) {
+        n.depth = depth;
+        if (n.children.length > 0) {
+          aggregate(n.children, depth + 1);
+          n.aggCertificaciones = n.children.reduce((s, c) => s + c.aggCertificaciones, 0);
+          n.aggMonto = n.children.reduce((s, c) => s + c.aggMonto, 0);
+        }
+      }
+    };
+    aggregate(roots, 0);
+    return roots;
+  });
+
+  // Flatten tree respecting expanded state
+  protected readonly visibleCuentaRows = computed<CuentaReporteNode[]>(() => {
+    const expanded = this.expandedCuentaIds();
+    const result: CuentaReporteNode[] = [];
+    const walk = (nodes: CuentaReporteNode[]) => {
+      for (const n of nodes) {
+        result.push(n);
+        if (n.children.length > 0 && expanded.has(n.data.cuenta_id)) {
+          walk(n.children);
+        }
+      }
+    };
+    walk(this.cuentaTree());
+    return result;
+  });
+
   async ngOnInit(): Promise<void> {
     await this.cargar();
   }
@@ -257,11 +354,35 @@ export class Reportes implements OnInit {
         Object.keys(filtros).length > 0 ? (filtros as never) : undefined,
       );
       this.reporte.set(result);
+      // Auto-expand first 2 levels in tree
+      const ids = new Set<string>();
+      for (const item of result.por_cuenta_jerarquico ?? []) {
+        if (item.nivel <= 2) ids.add(item.cuenta_id);
+      }
+      this.expandedCuentaIds.set(ids);
     } catch (err) {
       this.toast.error(String(err));
     } finally {
       this.loading.set(false);
     }
+  }
+
+  protected toggleExpandCuenta(id: string): void {
+    const s = new Set(this.expandedCuentaIds());
+    if (s.has(id)) s.delete(id); else s.add(id);
+    this.expandedCuentaIds.set(s);
+  }
+
+  protected expandirTodoCuentas(): void {
+    const ids = new Set<string>();
+    for (const item of (this.reporte()?.por_cuenta_jerarquico ?? [])) {
+      ids.add(item.cuenta_id);
+    }
+    this.expandedCuentaIds.set(ids);
+  }
+
+  protected colapsarTodoCuentas(): void {
+    this.expandedCuentaIds.set(new Set());
   }
 
   protected async exportarExcel(): Promise<void> {
@@ -291,13 +412,22 @@ export class Reportes implements OnInit {
       const wsUnidad = XLSX.utils.json_to_sheet(unidadData);
       XLSX.utils.book_append_sheet(wb, wsUnidad, 'Por Unidad');
 
-      // Por Cuenta
-      const cuentaData = r.por_cuenta.map((c: ReportePorCuenta) => ({
-        Código: c.cuenta_codigo,
-        Cuenta: c.cuenta_nombre,
-        Certificaciones: c.total_certificaciones,
-        'Monto Total': c.monto_total ?? '0',
-      }));
+      // Por Cuenta (Jerárquico)
+      const flattenTree = (nodes: CuentaReporteNode[], result: { Código: string; Cuenta: string; Nivel: number; Certificaciones: number; 'Monto Total': number }[] = []): typeof result => {
+        for (const n of nodes) {
+          const indent = '  '.repeat(n.depth);
+          result.push({
+            Código: n.data.cuenta_codigo,
+            Cuenta: `${indent}${n.data.cuenta_nombre}`,
+            Nivel: n.data.nivel,
+            Certificaciones: n.aggCertificaciones,
+            'Monto Total': n.aggMonto,
+          });
+          if (n.children.length > 0) flattenTree(n.children, result);
+        }
+        return result;
+      };
+      const cuentaData = flattenTree(this.cuentaTree());
       const wsCuenta = XLSX.utils.json_to_sheet(cuentaData);
       XLSX.utils.book_append_sheet(wb, wsCuenta, 'Por Cuenta');
 

@@ -200,7 +200,7 @@ export class FormCertificacion implements OnInit {
         this.proyectoService.listar(),
       ]);
       this.unidades.set(unidades.filter((u) => u.activo));
-      this.cuentas.set(cuentas.filter((c) => c.activo));
+      this.cuentas.set(cuentas.filter((c) => c.activo && c.nivel === 5));
       this.proyectos.set(proyectos.filter((p) => p.activo));
     } catch {
       this.toast.error('Error al cargar catálogos');

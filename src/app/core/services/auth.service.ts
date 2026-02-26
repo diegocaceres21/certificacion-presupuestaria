@@ -63,6 +63,14 @@ export class AuthService {
     });
   }
 
+  actualizarInfoUsuario(updates: Partial<Pick<UserInfo, 'nombre_completo' | 'cargo'>>): void {
+    const current = this._currentUser();
+    if (!current) return;
+    const updated: UserInfo = { ...current, ...updates };
+    this._currentUser.set(updated);
+    sessionStorage.setItem(USER_KEY, JSON.stringify(updated));
+  }
+
   private loadStoredToken(): string | null {
     return sessionStorage.getItem(TOKEN_KEY);
   }

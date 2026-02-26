@@ -45,13 +45,13 @@ pub async fn obtener_reporte(
 
     // By account
     let por_cuenta_query = format!(
-        "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
+        "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
                 COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
          FROM certificacion c
          INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
          WHERE c.deleted_at IS NULL {}
-         GROUP BY cc.id, cc.codigo, cc.cuenta
-         ORDER BY monto_total DESC",
+         GROUP BY cc.id, cc.codigo, cc.cuenta, cc.nivel
+         ORDER BY cc.codigo",
         where_clause
     );
     let por_cuenta = sqlx::query_as::<_, ReportePorCuenta>(&por_cuenta_query)
@@ -75,11 +75,36 @@ pub async fn obtener_reporte(
         .await
         .map_err(|e| format!("Error obteniendo reporte por proyecto: {}", e))?;
 
+    // Hierarchical account report: all accounts + cert counts for leaves (nivel 5)
+    let por_cuenta_jerarquico_query = format!(
+        "SELECT cc.id as cuenta_id, cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
+                cc.nivel, cc.id_cuenta_padre,
+                COALESCE(agg.total_certificaciones, 0) as total_certificaciones,
+                agg.monto_total
+         FROM cuenta_contable cc
+         LEFT JOIN (
+           SELECT c.id_cuenta_contable,
+                  COUNT(*) as total_certificaciones,
+                  SUM(c.monto_total) as monto_total
+           FROM certificacion c
+           WHERE c.deleted_at IS NULL {}
+           GROUP BY c.id_cuenta_contable
+         ) agg ON agg.id_cuenta_contable = cc.id
+         WHERE cc.activo = 1
+         ORDER BY cc.codigo",
+        where_clause
+    );
+    let por_cuenta_jerarquico = sqlx::query_as::<_, ReporteCuentaJerarquico>(&por_cuenta_jerarquico_query)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo reporte jerárquico: {}", e))?;
+
     Ok(ReporteCompleto {
         resumen,
         por_unidad,
         por_cuenta,
         por_proyecto,
+        por_cuenta_jerarquico,
     })
 }
 

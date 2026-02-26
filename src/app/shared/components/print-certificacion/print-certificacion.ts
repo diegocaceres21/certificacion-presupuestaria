@@ -8,85 +8,110 @@ import { DatePipe, DecimalPipe } from '@angular/common';
   imports: [DatePipe, DecimalPipe],
   template: `
     <div class="cert-print" [class.cert-print--vista]="modo() === 'vista'">
-      <!-- Header -->
-      <div class="cert-header">
-        <div class="cert-logo">
-          <img src="logo-ucb.png" alt="Logo UCB" width="90" height="90" />
+
+      <!-- ═══ ENCABEZADO ═══ -->
+      <header class="cp-header">
+        <div class="cp-logo">
+          <img src="logo-ucb.png" alt="Logo UCB" width="62" height="62" />
         </div>
-        <div class="cert-title-block">
-          <h1 class="cert-university">Universidad Católica Boliviana "San Pablo"</h1>
-          <h2 class="cert-sede">Unidad Académica Regional Cochabamba</h2>
-          <h3 class="cert-dept">Departamento Administrativo Financiero</h3>
+        <div class="cp-header-text">
+          <p class="cp-univ">UNIVERSIDAD CATÓLICA BOLIVIANA "SAN PABLO"</p>
+          <p class="cp-sede">Sede Cochabamba</p>
         </div>
+        <div class="cp-header-meta">
+          <p class="cp-meta-nro"><b>N° {{ certificacion().nro_certificacion }}/{{ certificacion().anio_certificacion }}</b></p>
+          <p class="cp-meta-fecha">Fecha: {{ certificacion().fecha_certificacion | date:'dd/MM/yyyy' }}</p>
+        </div>
+      </header>
+
+      <!-- ═══ TÍTULO PRINCIPAL ═══ -->
+      <div class="cp-title-bar">
+        <h1>CERTIFICACIÓN PRESUPUESTARIA</h1>
       </div>
 
-      <hr class="cert-divider" />
+      <!-- ═══ DATOS ═══ -->
+      <section class="cp-fields" aria-label="Datos de la certificación">
 
-      <!-- Certificate number & date -->
-      <div class="cert-meta">
-        <div class="cert-number">
-          <strong>CERTIFICACIÓN PRESUPUESTARIA N°</strong>
-          <span class="cert-nro">{{ certificacion().nro_certificacion }}/{{ certificacion().anio_certificacion }}</span>
+        <div class="cp-row">
+            <div class="cp-field" style="flex: 2">
+              <span class="cp-label">Indicador</span>
+              <span class="cp-value">PO (PLAN OPERATIVO)</span>
+            </div>
         </div>
-        <div class="cert-date">
-          <strong>Fecha:</strong> {{ certificacion().fecha_certificacion | date:'dd/MM/yyyy' }}
-        </div>
-      </div>
 
-      <!-- Body -->
-      <div class="cert-body">
-        <table class="cert-fields" aria-label="Datos de la certificación">
-          <tbody>
-            <tr>
-              <th scope="row">Unidad Organizacional:</th>
-              <td>{{ certificacion().unidad_codigo }} — {{ certificacion().unidad_nombre }}</td>
-            </tr>
-            <tr>
-              <th scope="row">Cuenta Contable:</th>
-              <td>{{ certificacion().cuenta_codigo }} — {{ certificacion().cuenta_nombre }}</td>
-            </tr>
-            @if (certificacion().proyecto_nombre) {
-              <tr>
-                <th scope="row">Proyecto:</th>
-                <td>
-                  {{ certificacion().proyecto_nombre }}
-                  @if (certificacion().proyecto_pei) {
-                    <span class="cert-pei">(PEI: {{ certificacion().proyecto_pei }})</span>
-                  }
-                </td>
-              </tr>
+                <!-- Concepto -->
+        <div class="cp-row">
+          <div class="cp-field cp-field--full">
+            <span class="cp-label">Concepto</span>
+            <span class="cp-value cp-concepto">{{ certificacion().concepto }}</span>
+          </div>
+        </div>
+
+        <!-- Unidad -->
+        <div class="cp-row">
+          <div class="cp-field cp-field--full">
+            <span class="cp-label">Unidad Organizacional</span>
+            <span class="cp-value">{{ certificacion().unidad_codigo }} — {{ certificacion().unidad_nombre }}</span>
+          </div>
+        </div>
+
+        <!-- Cuenta -->
+        <div class="cp-row">
+          <div class="cp-field cp-field--full">
+            <span class="cp-label">Cuenta Contable</span>
+            <span class="cp-value">{{ certificacion().cuenta_codigo }} — {{ certificacion().cuenta_nombre }}</span>
+          </div>
+        </div>
+
+        <!-- Proyecto + PEI en misma fila (solo si aplica) -->
+        @if (certificacion().proyecto_nombre) {
+          <div class="cp-row">
+            <div class="cp-field" style="flex: 2">
+              <span class="cp-label">Proyecto</span>
+              <span class="cp-value">{{ certificacion().proyecto_nombre }}</span>
+            </div>
+            @if (certificacion().proyecto_pei) {
+              <div class="cp-field" style="flex: 1">
+                <span class="cp-label">Código PEI</span>
+                <span class="cp-value">{{ certificacion().proyecto_pei }}</span>
+              </div>
             }
-            <tr>
-              <th scope="row">Concepto:</th>
-              <td class="cert-concepto">{{ certificacion().concepto }}</td>
-            </tr>
-            <tr>
-              <th scope="row">Importe Total (Bs):</th>
-              <td class="cert-monto">{{ certificacion().monto_total | number:'1.2-2' }}</td>
-            </tr>
-            @if (certificacion().comentario) {
-              <tr>
-                <th scope="row">Comentario:</th>
-                <td>{{ certificacion().comentario }}</td>
-              </tr>
-            }
-            <tr>
-              <th scope="row">Generado por:</th>
-              <td>{{ certificacion().generado_por_nombre }} — {{ certificacion().generado_por_cargo }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+          </div>
+        }
 
-      <!-- Observaciones -->
-      @if (observaciones().length > 0) {
-        <div class="cert-section">
-          <h4 class="cert-section-title">Observaciones</h4>
-          <table class="cert-obs-table" aria-label="Observaciones">
+
+
+        <!-- Importe -->
+        <div class="cp-row cp-row--monto">
+          <div class="cp-field cp-monto-field">
+            <span class="cp-label">Importe Total</span>
+          </div>
+          <div class="cp-monto-value-wrap">
+            <span class="cp-monto-value">Bs.&nbsp;{{ certificacion().monto_total | number:'1.2-2' }}</span>
+          </div>
+        </div>
+
+        <!-- Comentario (opcional) -->
+        @if (certificacion().comentario) {
+          <div class="cp-row">
+            <div class="cp-field cp-field--full">
+              <span class="cp-label">Observaciones / Comentarios</span>
+              <span class="cp-value">{{ certificacion().comentario }}</span>
+            </div>
+          </div>
+        }
+
+      </section>
+
+      <!-- ═══ OBSERVACIONES ═══ -->
+      <!-- @if (observaciones().length > 0) {
+        <div class="cp-section">
+          <h2 class="cp-section-title">Observaciones</h2>
+          <table class="cp-table" aria-label="Observaciones">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Autor</th>
+                <th style="width: 110px">Fecha</th>
+                <th style="width: 160px">Autor</th>
                 <th>Comentario</th>
               </tr>
             </thead>
@@ -101,18 +126,18 @@ import { DatePipe, DecimalPipe } from '@angular/common';
             </tbody>
           </table>
         </div>
-      }
+      } -->
 
-      <!-- Historial de Modificaciones -->
+      <!-- ═══ HISTORIAL DE MODIFICACIONES ═══ -->
       @if (modificaciones().length > 0) {
-        <div class="cert-section">
-          <h4 class="cert-section-title">Historial de Modificaciones</h4>
-          <table class="cert-obs-table" aria-label="Historial de modificaciones">
+        <div class="cp-section">
+          <h2 class="cp-section-title">Historial de Modificaciones</h2>
+          <table class="cp-table" aria-label="Historial de modificaciones">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Modificado por</th>
-                <th>Cambios</th>
+                <th style="width: 110px">Fecha</th>
+                <th style="width: 150px">Modificado por</th>
+                <th style="width: 170px">Cambios</th>
                 <th>Comentario</th>
               </tr>
             </thead>
@@ -123,10 +148,10 @@ import { DatePipe, DecimalPipe } from '@angular/common';
                   <td>{{ mod.modificado_por_nombre }}</td>
                   <td>
                     @if (mod.monto_antiguo && mod.monto_nuevo) {
-                      <div>Monto: {{ mod.monto_antiguo | number:'1.2-2' }} → {{ mod.monto_nuevo | number:'1.2-2' }}</div>
+                      <span>El monto se ha modificado de: Bs. {{ mod.monto_antiguo | number:'1.2-2' }} a Bs. {{ mod.monto_nuevo | number:'1.2-2' }}.</span>
                     }
                     @if (mod.concepto_antiguo && mod.concepto_nuevo) {
-                      <div>Concepto modificado</div>
+                      <span>Se ha modificado el concepto de: {{ mod.concepto_antiguo }} a {{ mod.concepto_nuevo }}.</span>
                     }
                   </td>
                   <td>{{ mod.comentario ?? '—' }}</td>
@@ -137,196 +162,267 @@ import { DatePipe, DecimalPipe } from '@angular/common';
         </div>
       }
 
-      <!-- Signature block -->
-      <div class="cert-signatures">
-        <div class="cert-sig-block">
-          <div class="cert-sig-line"></div>
-          <p class="cert-sig-label">Elaborado por</p>
-          <p class="cert-sig-name">{{ certificacion().generado_por_nombre }}</p>
-          <p class="cert-sig-cargo">{{ certificacion().generado_por_cargo }}</p>
-        </div>
-        <div class="cert-sig-block">
-          <div class="cert-sig-line"></div>
-          <p class="cert-sig-label">Visto Bueno</p>
-          <p class="cert-sig-name">&nbsp;</p>
-          <p class="cert-sig-cargo">Director(a) Administrativo Financiero</p>
+      <!-- ═══ FIRMA ═══ -->
+      <div class="cp-signature">
+        <div class="cp-sig-block">
+          <div class="cp-sig-space"></div>
+          <div class="cp-sig-line"></div>
+          <p class="cp-sig-name">{{ certificacion().generado_por_nombre }}</p>
+          <p class="cp-sig-cargo">{{ certificacion().generado_por_cargo }}</p>
         </div>
       </div>
 
-      <!-- Footer -->
-      <div class="cert-footer">
-        <p>Este documento es una certificación presupuestaria emitida por la UCB "San Pablo" – Regional Cochabamba.</p>
-      </div>
     </div>
   `,
   styles: `
-    .cert-print--vista {
-      padding: 2rem;
+    /* ── Layout base ───────────────────────────────────────── */
+    .cert-print {
+      font-family: Arial, Helvetica, 'Liberation Sans', sans-serif;
+      font-size: 9.5pt;
+      color: #1a1a1a;
+      line-height: 1.45;
+      padding: 0;
+      margin: 0 auto;
+      max-width: 780px;
     }
 
-    .cert-header {
+    .cert-print--vista {
+      padding: 1.25rem;
+    }
+
+    /* ── Encabezado ────────────────────────────────────────── */
+    .cp-header {
       display: flex;
       align-items: center;
-      gap: 1.5rem;
+      gap: 0.75rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 3px solid #003366;
     }
 
-    .cert-logo img {
+    .cp-logo img {
       display: block;
+      flex-shrink: 0;
     }
 
-    .cert-title-block {
+    .cp-header-text {
       flex: 1;
     }
 
-    .cert-university {
-      font-size: 1.3rem;
+    .cp-univ {
+      font-size: 9pt;
       font-weight: 700;
-      color: var(--color-ucb-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #003366;
       margin: 0;
     }
 
-    .cert-sede {
-      font-size: 1rem;
-      font-weight: 600;
+    .cp-sede {
+      font-size: 8pt;
+      color: #555;
+      margin: 0.1rem 0 0;
+    }
+
+    .cp-header-meta {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .cp-meta-nro {
+      font-size: 9pt;
+      color: #003366;
+      margin: 0;
+    }
+
+    .cp-meta-nro strong {
+      font-size: 10.5pt;
+    }
+
+    .cp-meta-fecha {
+      font-size: 9pt;
+      color: #003366;
       margin: 0.15rem 0 0;
     }
 
-    .cert-dept {
-      font-size: 0.9rem;
-      font-weight: 500;
-      color: var(--color-gray-600);
-      margin: 0.15rem 0 0;
+    /* ── Título principal ──────────────────────────────────── */
+    .cp-title-bar {
+      background: #003366;
+      color: #ffffff;
+      text-align: center;
+      padding: 0.45rem 0.75rem;
+      margin-top: 0;
     }
 
-    .cert-divider {
-      border: none;
-      border-top: 2px solid var(--color-ucb-primary);
-      margin: 1rem 0;
-    }
-
-    .cert-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 1.5rem;
-    }
-
-    .cert-nro {
-      font-size: 1.25rem;
+    .cp-title-bar h1 {
+      font-size: 11.5pt;
       font-weight: 700;
-      color: var(--color-ucb-secondary);
-      margin-left: 0.5rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 0;
     }
 
-    .cert-fields {
-      width: 100%;
-      border-collapse: collapse;
+    /* ── Campos ────────────────────────────────────────────── */
+    .cp-fields {
+      border: 1px solid #bfc9d8;
+      border-top: none;
     }
 
-    .cert-fields th {
-      text-align: left;
-      width: 220px;
-      padding: 0.5rem 0.75rem;
-      vertical-align: top;
-      font-weight: 600;
-      color: var(--color-gray-700);
-      border-bottom: 1px solid var(--color-gray-200);
+    .cp-row {
+      display: flex;
+      border-bottom: 1px solid #bfc9d8;
     }
 
-    .cert-fields td {
-      padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid var(--color-gray-200);
+    .cp-row:last-child {
+      border-bottom: none;
     }
 
-    .cert-concepto {
+    .cp-field {
+      padding: 0.38rem 0.65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+
+    .cp-field + .cp-field {
+      border-left: 1px solid #bfc9d8;
+    }
+
+    .cp-field--full {
+      flex: 1;
+    }
+
+    .cp-label {
+      font-size: 6.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #003366;
+    }
+
+    .cp-value {
+      font-size: 9.5pt;
+    }
+
+    .cp-concepto {
       white-space: pre-wrap;
     }
 
-    .cert-monto {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: var(--color-ucb-primary);
+    /* ── Fila de Importe ───────────────────────────────────── */
+    .cp-row--monto {
+      background: #eef2f8;
+      align-items: center;
+      justify-content: space-between;
     }
 
-    .cert-pei {
-      font-size: 0.85rem;
-      color: var(--color-gray-500);
+    .cp-monto-field {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: none;
     }
 
-    .cert-section {
-      margin-top: 1.5rem;
-    }
-
-    .cert-section-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: var(--color-ucb-primary);
-      margin: 0 0 0.5rem;
-      padding-bottom: 0.25rem;
-      border-bottom: 1px solid var(--color-ucb-primary);
-    }
-
-    .cert-obs-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.85rem;
-    }
-
-    .cert-obs-table th {
-      text-align: left;
-      padding: 0.4rem 0.5rem;
-      background: var(--color-gray-100);
-      border-bottom: 1px solid var(--color-gray-300);
-      font-weight: 600;
-    }
-
-    .cert-obs-table td {
-      padding: 0.4rem 0.5rem;
-      border-bottom: 1px solid var(--color-gray-200);
-    }
-
-    .cert-signatures {
-      display: flex;
-      justify-content: space-around;
-      margin-top: 3rem;
-      gap: 2rem;
-    }
-
-    .cert-sig-block {
-      text-align: center;
-      min-width: 220px;
-    }
-
-    .cert-sig-line {
-      border-bottom: 1px solid var(--color-gray-800);
-      margin-bottom: 0.35rem;
-      min-width: 200px;
-    }
-
-    .cert-sig-label {
-      font-size: 0.8rem;
-      color: var(--color-gray-500);
+    .cp-monto-field .cp-label {
       margin: 0;
     }
 
-    .cert-sig-name {
+    .cp-monto-value-wrap {
+      padding: 0.38rem 0.75rem;
+    }
+
+    .cp-monto-value {
+      font-size: 13.5pt;
+      font-weight: 700;
+      color: #003366;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Secciones (observaciones / modificaciones) ─────────── */
+    .cp-section {
+      margin-top: 0.7rem;
+    }
+
+    .cp-section-title {
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #003366;
+      border-bottom: 1.5px solid #003366;
+      padding-bottom: 0.2rem;
+      margin: 0 0 0.3rem;
+    }
+
+    .cp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7.5pt;
+    }
+
+    .cp-table thead tr {
+      background: #003366;
+      color: #ffffff;
+    }
+
+    .cp-table th {
+      padding: 0.28rem 0.5rem;
+      text-align: left;
       font-weight: 600;
+    }
+
+    .cp-table td {
+      padding: 0.28rem 0.5rem;
+      border-bottom: 1px solid #dde3ec;
+    }
+
+    .cp-table tbody tr:nth-child(even) td {
+      background: #f4f7fb;
+    }
+
+    /* ── Firma ─────────────────────────────────────────────── */
+    .cp-signature {
+      display: flex;
+      justify-content: center;
+      margin-top: 3rem;
+    }
+
+    .cp-sig-block {
+      text-align: center;
+      min-width: 240px;
+    }
+
+    .cp-sig-space {
+      height: 2.8rem;
+    }
+
+    .cp-sig-line {
+      border-top: 1px solid #1a1a1a;
+      margin-bottom: 0.3rem;
+    }
+
+    .cp-sig-name {
+      font-weight: 700;
+      font-size: 9pt;
+      margin: 0;
+    }
+
+    .cp-sig-cargo {
+      font-size: 8pt;
+      color: #555;
       margin: 0.15rem 0 0;
     }
 
-    .cert-sig-cargo {
-      font-size: 0.85rem;
-      color: var(--color-gray-600);
-      margin: 0;
+    /* ── Regla @page (controla márgenes del navegador/SO) ──── */
+    @page {
+      size: letter portrait;
+      margin: 1.1cm 1.5cm;
     }
 
-    .cert-footer {
-      margin-top: 2rem;
-      text-align: center;
-      font-size: 0.75rem;
-      color: var(--color-gray-400);
-      border-top: 1px solid var(--color-gray-200);
-      padding-top: 0.75rem;
+    /* ── Overrides en impresión ─────────────────────────────── */
+    @media print {
+      .cert-print {
+        padding: 0 !important;
+        max-width: none !important;
+      }
     }
   `,
 })

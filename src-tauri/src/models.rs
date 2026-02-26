@@ -102,6 +102,7 @@ pub struct CuentaContable {
     pub id_cuenta_padre: Option<String>,
     pub codigo: String,
     pub cuenta: String,
+    pub nivel: i32,
     pub activo: bool,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
@@ -114,6 +115,7 @@ pub struct CuentaContableDetalle {
     pub id_cuenta_padre: Option<String>,
     pub codigo: String,
     pub cuenta: String,
+    pub nivel: i32,
     pub activo: bool,
     pub tipo_cuenta_nombre: String,
     pub cuenta_padre_codigo: Option<String>,
@@ -415,6 +417,7 @@ pub struct ReportePorUnidad {
 pub struct ReportePorCuenta {
     pub cuenta_codigo: String,
     pub cuenta_nombre: String,
+    pub nivel: i32,
     pub total_certificaciones: i64,
     pub monto_total: Option<Decimal>,
 }
@@ -434,10 +437,22 @@ pub struct FiltrosReporte {
     pub anio: Option<i32>,
 }
 
+#[derive(Debug, Serialize, FromRow)]
+pub struct ReporteCuentaJerarquico {
+    pub cuenta_id: String,
+    pub cuenta_codigo: String,
+    pub cuenta_nombre: String,
+    pub nivel: i32,
+    pub id_cuenta_padre: Option<String>,
+    pub total_certificaciones: i64,
+    pub monto_total: Option<Decimal>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ReporteCompleto {
     pub resumen: ReporteResumen,
     pub por_unidad: Vec<ReportePorUnidad>,
     pub por_cuenta: Vec<ReportePorCuenta>,
     pub por_proyecto: Vec<ReportePorProyecto>,
+    pub por_cuenta_jerarquico: Vec<ReporteCuentaJerarquico>,
 }

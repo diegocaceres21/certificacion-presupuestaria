@@ -6,7 +6,8 @@ import {
   ChangeDetectionStrategy,
   OnInit,
 } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
   Dependencia,
   UnidadConDependencia,
@@ -26,6 +27,39 @@ import { Combobox, ComboboxOption } from '../../../shared/components/combobox/co
         <h2>Unidades Organizacionales</h2>
         <button class="btn btn-primary" (click)="abrirModal()">+ Nueva Unidad</button>
       </div>
+      <div class="card-body" style="padding: 1rem; border-bottom: 1px solid var(--color-ucb-gray-200)">
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center">
+          <div style="position: relative; flex: 1; min-width: 220px">
+            <svg style="position:absolute;left:0.6rem;top:50%;transform:translateY(-50%);color:var(--color-ucb-gray-400)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              type="text"
+              placeholder="Buscar por código o nombre..."
+              [value]="busqueda()"
+              (input)="setBusqueda($event)"
+              style="padding-left: 2rem; width: 100%"
+              aria-label="Buscar unidades"
+            />
+          </div>
+          <app-combobox
+            [formControl]="filtroDependenciaCtrl"
+            [options]="dependenciaFiltroOptions()"
+            placeholder="Todas las dependencias"
+            ariaLabel="Filtrar por dependencia"
+          />
+          <app-combobox
+            [formControl]="filtroEstadoCtrl"
+            [options]="estadoFiltroOptions"
+            placeholder="Todos los estados"
+            ariaLabel="Filtrar por estado"
+          />
+          @if (busqueda() || filtroDependencia() || filtroEstado()) {
+            <button class="btn btn-secondary btn-sm" (click)="limpiarFiltros()">Limpiar filtros</button>
+          }
+          <span style="color: var(--color-ucb-gray-500); font-size: 0.85rem; white-space: nowrap">
+            {{ unidadesFiltradas().length }} / {{ unidades().length }} unidades
+          </span>
+        </div>
+      </div>
       <div class="card-body" style="padding:0">
         <table class="data-table" aria-label="Unidades organizacionales">
           <thead>
@@ -38,7 +72,7 @@ import { Combobox, ComboboxOption } from '../../../shared/components/combobox/co
             </tr>
           </thead>
           <tbody>
-            @for (u of unidades(); track u.id) {
+            @for (u of unidadesFiltradas(); track u.id) {
               <tr>
                 <td>{{ u.codigo }}</td>
                 <td>{{ u.unidad }}</td>
@@ -56,7 +90,7 @@ import { Combobox, ComboboxOption } from '../../../shared/components/combobox/co
                 </td>
               </tr>
             } @empty {
-              <tr><td colspan="5" style="text-align: center; padding: 2rem">No hay unidades registradas.</td></tr>
+              <tr><td colspan="5" style="text-align: center; padding: 2rem">{{ busqueda() || filtroDependencia() || filtroEstado() !== 'todos' ? 'No hay unidades que coincidan con los filtros.' : 'No hay unidades registradas.' }}</td></tr>
             }
           </tbody>
         </table>
@@ -102,6 +136,11 @@ export class Unidades implements OnInit {
 
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly dependencias = signal<Dependencia[]>([]);
+  protected readonly busqueda = signal('');
+  protected readonly filtroDependenciaCtrl = new FormControl<string | null>(null);
+  protected readonly filtroEstadoCtrl = new FormControl<string | null>(null);
+  protected readonly filtroDependencia = toSignal(this.filtroDependenciaCtrl.valueChanges, { initialValue: null });
+  protected readonly filtroEstado = toSignal(this.filtroEstadoCtrl.valueChanges, { initialValue: null });
   protected readonly modalAbierto = signal(false);
   protected readonly editandoId = signal<string | null>(null);
   protected readonly guardando = signal(false);
@@ -110,11 +149,43 @@ export class Unidades implements OnInit {
     this.dependencias().map(d => ({ value: d.id, label: `${d.codigo} — ${d.dependencia}` }))
   );
 
+  protected readonly dependenciaFiltroOptions = computed<ComboboxOption[]>(() =>
+    this.dependencias().map(d => ({ value: d.id, label: `${d.codigo} — ${d.dependencia}` }))
+  );
+
+  protected readonly estadoFiltroOptions: ComboboxOption[] = [
+    { value: 'activos', label: 'Solo activos' },
+    { value: 'inactivos', label: 'Solo inactivos' },
+  ];
+
+  protected readonly unidadesFiltradas = computed(() => {
+    const q = this.busqueda().toLowerCase().trim();
+    const dep = this.filtroDependencia();
+    const estado = this.filtroEstado();
+    return this.unidades().filter(u => {
+      if (estado === 'activos' && !u.activo) return false;
+      if (estado === 'inactivos' && u.activo) return false;
+      if (dep && u.id_dependencia !== dep) return false;
+      if (!q) return true;
+      return String(u.codigo).includes(q) || u.unidad.toLowerCase().includes(q);
+    });
+  });
+
   protected readonly form = this.fb.nonNullable.group({
     codigo: [0, Validators.required],
     unidad: ['', Validators.required],
     id_dependencia: ['', Validators.required],
   });
+
+  protected setBusqueda(e: Event): void {
+    this.busqueda.set((e.target as HTMLInputElement).value);
+  }
+
+  protected limpiarFiltros(): void {
+    this.busqueda.set('');
+    this.filtroDependenciaCtrl.setValue(null);
+    this.filtroEstadoCtrl.setValue(null);
+  }
 
   async ngOnInit(): Promise<void> {
     await this.cargar();

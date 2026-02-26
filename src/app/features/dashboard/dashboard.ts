@@ -19,7 +19,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule, DetalleCertificacion, PrintCertificacion, Combobox, Datepicker],
   template: `
-    <div class="page-header">
+    <div class="page-header no-print">
       <h1 class="page-title">Panel de Control</h1>
       <p class="text-muted" style="font-size: 0.8125rem; margin: 0.25rem 0 0">
         Certificaciones presupuestarias emitidas
@@ -189,10 +189,10 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
       />
     }
 
-    <!-- Print area (hidden, shown only on print) -->
+    <!-- Print area (hidden on screen, visible only for print from table) -->
     @if (printCert()) {
       <div class="print-area">
-        <app-print-certificacion [certificacion]="printCert()!" />
+        <app-print-certificacion [certificacion]="printCert()!" [modo]="'impresion'" />
       </div>
     }
   `,
@@ -255,7 +255,7 @@ export class Dashboard implements OnInit {
   );
 
   protected readonly cuentaOptions = computed<ComboboxOption[]>(() =>
-    this.cuentas().map(c => ({ value: c.id, label: `${c.codigo} - ${c.cuenta}` }))
+    this.cuentas().filter(c => c.nivel === 5).map(c => ({ value: c.id, label: `${c.codigo} - ${c.cuenta}` }))
   );
 
   protected readonly proyectoOptions = computed<ComboboxOption[]>(() =>
@@ -341,7 +341,7 @@ export class Dashboard implements OnInit {
     this.printCert.set(cert);
     setTimeout(() => {
       window.print();
-      setTimeout(() => this.printCert.set(null), 500);
+      this.printCert.set(null);
     }, 200);
   }
 

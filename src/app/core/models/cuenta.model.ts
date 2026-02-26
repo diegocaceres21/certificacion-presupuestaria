@@ -21,6 +21,7 @@ export interface CuentaContable {
   id_cuenta_padre: string | null;
   codigo: string;
   cuenta: string;
+  nivel: number;
   activo: boolean;
   created_at: string;
   updated_at: string;
@@ -32,6 +33,7 @@ export interface CuentaContableDetalle {
   id_cuenta_padre: string | null;
   codigo: string;
   cuenta: string;
+  nivel: number;
   activo: boolean;
   tipo_cuenta_nombre: string;
   cuenta_padre_codigo: string | null;

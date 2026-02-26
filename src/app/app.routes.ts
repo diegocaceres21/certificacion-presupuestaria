@@ -79,6 +79,11 @@ export const routes: Routes = [
           import('./features/usuarios/usuarios').then((m) => m.Usuarios),
         canActivate: [roleGuard('administrador')],
       },
+      {
+        path: 'perfil',
+        loadComponent: () =>
+          import('./features/perfil/perfil').then((m) => m.Perfil),
+      },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
     ],
   },

@@ -367,141 +367,134 @@ label {
 .badge-inactive { background: #fee2e2; color: #991b1b; }
 
 /* ============================================
+   Print area – hidden on screen, shown only during print
+   ============================================ */
+.print-area {
+  display: none;
+}
+
+/* ============================================
    Print Styles
    ============================================ */
+@page {
+  size: A4 portrait;
+  margin: 1cm 1.5cm;
+}
+
 @media print {
-  body {
+  /* ---- Global resets ---- */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
     background: white !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
+  /* ---- Hide ALL layout chrome ---- */
   .no-print,
   .sidebar,
   .app-header,
-  .toast-container {
+  .toast-container,
+  .page-header,
+  .card.mb-4,
+  .card.no-print {
     display: none !important;
   }
 
-  .print-area {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    padding: 1.5cm 2cm;
-    background: white;
+  /* ---- Reset Angular layout wrappers ---- */
+  app-root,
+  app-main-layout,
+  app-dashboard,
+  app-detalle-certificacion {
+    display: block !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
-  .print-area * {
-    color: black !important;
+  .main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* ---- Flatten modal for detail-view print ---- */
+  .modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    display: block !important;
+    overflow: visible !important;
+    z-index: auto !important;
+    animation: none !important;
+  }
+
+  .modal-content {
+    position: static !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    max-width: none !important;
+    animation: none !important;
+  }
+
+  .modal-header,
+  .modal-footer {
+    display: none !important;
+  }
+
+  .modal-body {
+    padding: 0 !important;
+  }
+
+  /* ---- Show the hidden print-area (dashboard table path) ---- */
+  .print-area {
+    display: block !important;
+    position: static !important;
+    background: white !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* ---- Certificate component ---- */
+  .cert-print {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    page-break-inside: avoid;
+  }
+
+  /* Force background colours to print */
+  .cp-title-bar,
+  .cp-row--monto .cp-value,
+  .cp-label,
+  .cp-header-meta {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }
 
 /* ============================================
-   Print Certificate Styles
+   Print Certificate – base (component is self-contained)
    ============================================ */
 .cert-print {
-  font-family: 'Times New Roman', serif;
-  max-width: 800px;
+  font-family: Arial, Helvetica, 'Liberation Sans', sans-serif;
   margin: 0 auto;
-  padding: 2rem;
-}
-
-.cert-print .cert-header {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 2rem;
-  border-bottom: 3px solid var(--color-ucb-primary);
-  padding-bottom: 1rem;
-}
-
-.cert-print .cert-logo {
-  width: 80px;
-  height: auto;
-  flex-shrink: 0;
-}
-
-.cert-print .cert-title-block {
-  flex: 1;
-  text-align: center;
-}
-
-.cert-print .cert-university {
-  font-size: 1rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-ucb-primary);
-  margin-bottom: 0.25rem;
-}
-
-.cert-print .cert-main-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--color-ucb-primary);
-}
-
-.cert-print .cert-meta {
-  text-align: right;
-  font-size: 0.875rem;
-  min-width: 180px;
-}
-
-.cert-print .cert-meta-item {
-  margin-bottom: 0.25rem;
-}
-
-.cert-print .cert-meta-label {
-  font-weight: 700;
-}
-
-.cert-print .cert-body {
-  margin-top: 1.5rem;
-}
-
-.cert-print .cert-field {
-  margin-bottom: 1rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--color-ucb-gray-200);
-}
-
-.cert-print .cert-field-label {
-  font-weight: 700;
-  font-size: 0.875rem;
-  color: var(--color-ucb-gray-700);
-  margin-bottom: 0.25rem;
-}
-
-.cert-print .cert-field-value {
-  font-size: 0.9375rem;
-  color: var(--color-ucb-gray-900);
-}
-
-.cert-print .cert-observation {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 2px solid var(--color-ucb-gray-300);
-}
-
-.cert-print .cert-signature {
-  margin-top: 4rem;
-  text-align: center;
-}
-
-.cert-print .cert-signature-line {
-  width: 250px;
-  border-top: 1px solid var(--color-ucb-gray-900);
-  margin: 0 auto;
-  padding-top: 0.5rem;
-}
-
-.cert-print .cert-signature-name {
-  font-weight: 700;
-  font-size: 0.9375rem;
-}
-
-.cert-print .cert-signature-cargo {
-  font-size: 0.8125rem;
-  color: var(--color-ucb-gray-600);
+  max-width: 780px;
 }
 
 /* ============================================

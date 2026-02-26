@@ -34,6 +34,14 @@ export class UsuarioService {
     });
   }
 
+  async editarPerfil(id: string, data: { nombre_completo: string; cargo: string }): Promise<UsuarioConPerfil> {
+    return invoke<UsuarioConPerfil>('editar_usuario', {
+      token: this.auth.getToken(),
+      id,
+      data,
+    });
+  }
+
   async resetearPassword(id: string, nuevaPassword: string): Promise<string> {
     return invoke<string>('resetear_password', {
       token: this.auth.getToken(),
