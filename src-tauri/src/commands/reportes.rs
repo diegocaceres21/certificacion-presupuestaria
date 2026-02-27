@@ -29,7 +29,7 @@ pub async fn obtener_reporte(
 
     // By unit
     let por_unidad_query = format!(
-        "SELECT uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
+        "SELECT uo.id as unidad_id, uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
                 COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
          FROM certificacion c
          INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
@@ -45,7 +45,7 @@ pub async fn obtener_reporte(
 
     // By account
     let por_cuenta_query = format!(
-        "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
+        "SELECT cc.id as cuenta_id, cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
                 COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
          FROM certificacion c
          INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
@@ -125,4 +125,64 @@ fn build_date_filter(filtros: &FiltrosReporte) -> String {
     }
 
     conditions.join(" ")
+}
+
+/// Returns the breakdown of a single unidad: monto per cuenta contable.
+#[tauri::command]
+pub async fn reporte_detalle_unidad(
+    pool: State<'_, SqlitePool>,
+    token: String,
+    id_unidad: String,
+    filtros: Option<FiltrosReporte>,
+) -> Result<Vec<DetalleUnidadPorCuenta>, String> {
+    let _claims = auth::validate_token(&token)
+        .map_err(|e| format!("Token inválido: {}", e))?;
+    let filtros = filtros.unwrap_or_default();
+    let where_clause = build_date_filter(&filtros);
+    let query = format!(
+        "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
+                COUNT(*) as total_certificaciones,
+                CAST(SUM(c.monto_total) AS TEXT) as monto_total
+         FROM certificacion c
+         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
+         WHERE c.deleted_at IS NULL AND c.id_unidad = ? {}
+         GROUP BY cc.id, cc.codigo, cc.cuenta, cc.nivel
+         ORDER BY cc.codigo",
+        where_clause
+    );
+    sqlx::query_as::<_, DetalleUnidadPorCuenta>(&query)
+        .bind(&id_unidad)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo detalle unidad: {}", e))
+}
+
+/// Returns the breakdown of a single cuenta contable: monto per unidad organizacional.
+#[tauri::command]
+pub async fn reporte_detalle_cuenta(
+    pool: State<'_, SqlitePool>,
+    token: String,
+    id_cuenta: String,
+    filtros: Option<FiltrosReporte>,
+) -> Result<Vec<DetalleCuentaPorUnidad>, String> {
+    let _claims = auth::validate_token(&token)
+        .map_err(|e| format!("Token inválido: {}", e))?;
+    let filtros = filtros.unwrap_or_default();
+    let where_clause = build_date_filter(&filtros);
+    let query = format!(
+        "SELECT uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
+                COUNT(*) as total_certificaciones,
+                CAST(SUM(c.monto_total) AS TEXT) as monto_total
+         FROM certificacion c
+         INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
+         WHERE c.deleted_at IS NULL AND c.id_cuenta_contable = ? {}
+         GROUP BY uo.id, uo.codigo, uo.unidad
+         ORDER BY CAST(SUM(c.monto_total) AS REAL) DESC",
+        where_clause
+    );
+    sqlx::query_as::<_, DetalleCuentaPorUnidad>(&query)
+        .bind(&id_cuenta)
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| format!("Error obteniendo detalle cuenta: {}", e))
 }

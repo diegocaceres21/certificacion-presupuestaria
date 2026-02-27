@@ -127,6 +127,8 @@ pub fn run() {
             usuarios::resetear_password,
             // Reportes
             reportes::obtener_reporte,
+            reportes::reporte_detalle_unidad,
+            reportes::reporte_detalle_cuenta,
             // Sync
             sync_cmd::sync_now,
             sync_cmd::get_sync_status,

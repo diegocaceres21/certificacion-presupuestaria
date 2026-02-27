@@ -42,6 +42,8 @@ router.get('/', async (req: Request, res: Response) => {
       params
     );
 
+    console.log('Resumen:', resumenRows[0]);
+
     // By unit
     const [porUnidadRows] = await pool.query<RowDataPacket[]>(
       `SELECT uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
@@ -54,6 +56,7 @@ router.get('/', async (req: Request, res: Response) => {
       params
     );
 
+    console.log('Por unidad:', porUnidadRows);
     // By account
     const [porCuentaRows] = await pool.query<RowDataPacket[]>(
       `SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
@@ -66,6 +69,7 @@ router.get('/', async (req: Request, res: Response) => {
       params
     );
 
+    console.log('Por cuenta:', porCuentaRows);
     // By project
     const [porProyectoRows] = await pool.query<RowDataPacket[]>(
       `SELECT p.nombre as proyecto_nombre,
@@ -97,6 +101,8 @@ router.get('/', async (req: Request, res: Response) => {
        ORDER BY cc.codigo`,
       params
     );
+
+    console.log('Por cuenta jerárquico:', porCuentaJerarquicoRows);
 
     res.json({
       resumen: resumenRows[0],

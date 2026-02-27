@@ -485,6 +485,7 @@ pub struct ReporteResumen {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct ReportePorUnidad {
+    pub unidad_id: String,
     pub unidad_codigo: i32,
     pub unidad_nombre: String,
     pub total_certificaciones: i64,
@@ -493,6 +494,7 @@ pub struct ReportePorUnidad {
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct ReportePorCuenta {
+    pub cuenta_id: String,
     pub cuenta_codigo: String,
     pub cuenta_nombre: String,
     pub nivel: i32,
@@ -533,6 +535,25 @@ pub struct ReporteCompleto {
     pub por_cuenta: Vec<ReportePorCuenta>,
     pub por_proyecto: Vec<ReportePorProyecto>,
     pub por_cuenta_jerarquico: Vec<ReporteCuentaJerarquico>,
+}
+
+/// Breakdown of a single unidad: monto per cuenta contable
+#[derive(Debug, Serialize, FromRow)]
+pub struct DetalleUnidadPorCuenta {
+    pub cuenta_codigo: String,
+    pub cuenta_nombre: String,
+    pub nivel: i32,
+    pub total_certificaciones: i64,
+    pub monto_total: Option<String>,
+}
+
+/// Breakdown of a single cuenta: monto per unidad organizacional
+#[derive(Debug, Serialize, FromRow)]
+pub struct DetalleCuentaPorUnidad {
+    pub unidad_codigo: i32,
+    pub unidad_nombre: String,
+    pub total_certificaciones: i64,
+    pub monto_total: Option<String>,
 }
 
 // ============================================

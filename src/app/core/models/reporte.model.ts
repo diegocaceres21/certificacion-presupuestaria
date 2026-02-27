@@ -4,6 +4,7 @@ export interface ReporteResumen {
 }
 
 export interface ReportePorUnidad {
+  unidad_id: string;
   unidad_codigo: number;
   unidad_nombre: string;
   total_certificaciones: number;
@@ -11,6 +12,7 @@ export interface ReportePorUnidad {
 }
 
 export interface ReportePorCuenta {
+  cuenta_id: string;
   cuenta_codigo: string;
   cuenta_nombre: string;
   nivel: number;
@@ -47,4 +49,19 @@ export interface FiltrosReporte {
   fecha_hasta?: string;
   mes?: number;
   anio?: number;
+}
+
+export interface DetalleUnidadPorCuenta {
+  cuenta_codigo: string;
+  cuenta_nombre: string;
+  nivel: number;
+  total_certificaciones: number;
+  monto_total: string | null;
+}
+
+export interface DetalleCuentaPorUnidad {
+  unidad_codigo: number;
+  unidad_nombre: string;
+  total_certificaciones: number;
+  monto_total: string | null;
 }
