@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.3"
+version = "0.3.1"
 description = "Sistema de Certificación Presupuestaria - UCB San Pablo"
 authors = ["UCB"]
 license = ""
