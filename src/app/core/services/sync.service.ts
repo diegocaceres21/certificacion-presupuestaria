@@ -10,7 +10,9 @@ export class SyncService {
     is_online: false,
   });
   private readonly _syncing = signal(false);
-  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private syncIntervalId: ReturnType<typeof setInterval> | null = null;
+  private connectivityIntervalId: ReturnType<typeof setInterval> | null = null;
+  private wasOnline = false;
 
   readonly status = this._status.asReadonly();
   readonly syncing = this._syncing.asReadonly();
@@ -18,23 +20,34 @@ export class SyncService {
   readonly pendingCount = computed(() => this._status().pending_count);
   readonly lastSync = computed(() => this._status().last_sync);
 
-  /** Start periodic sync (every 5 minutes). Call once after login. */
+  /** Start periodic sync (every 5 minutes) and connectivity watcher (every 30s). Call once after login. */
   startPeriodicSync(): void {
     this.stopPeriodicSync();
-    // Initial status check
-    this.refreshStatus();
-    // Periodic refresh every 5 minutes
-    this.intervalId = setInterval(() => {
+    // Initial full sync to ensure local data is up to date
+    this.syncNow();
+    // Periodic full sync every 5 minutes
+    this.syncIntervalId = setInterval(() => {
       this.syncNow();
     }, 5 * 60 * 1000);
+
+    // Connectivity watcher: check every 30 seconds.
+    // When API transitions from offline → online, trigger an automatic sync.
+    this.connectivityIntervalId = setInterval(() => {
+      this.checkConnectivityAndAutoSync();
+    }, 30_000);
   }
 
-  /** Stop periodic sync. Call on logout. */
+  /** Stop periodic sync and connectivity watcher. Call on logout. */
   stopPeriodicSync(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.syncIntervalId) {
+      clearInterval(this.syncIntervalId);
+      this.syncIntervalId = null;
     }
+    if (this.connectivityIntervalId) {
+      clearInterval(this.connectivityIntervalId);
+      this.connectivityIntervalId = null;
+    }
+    this.wasOnline = false;
   }
 
   /** Trigger a full sync (pull + push). */
@@ -44,6 +57,7 @@ export class SyncService {
     try {
       const status = await invoke<SyncStatus>('sync_now');
       this._status.set(status);
+      this.wasOnline = status.is_online;
       return status;
     } catch (err) {
       console.warn('Sync failed:', err);
@@ -60,6 +74,35 @@ export class SyncService {
       this._status.set(status);
     } catch (err) {
       console.warn('Status refresh failed:', err);
+    }
+  }
+
+  /**
+   * Lightweight connectivity check. When the API transitions from
+   * offline → online, automatically trigger a full sync so that any
+   * writes made while offline are reconciled immediately.
+   */
+  private async checkConnectivityAndAutoSync(): Promise<void> {
+    // Skip if a sync is already running
+    if (this._syncing()) return;
+
+    try {
+      const status = await invoke<SyncStatus>('get_sync_status');
+      this._status.set(status);
+
+      const nowOnline = status.is_online;
+
+      if (nowOnline && !this.wasOnline) {
+        // Connectivity restored — trigger automatic sync
+        console.info('Connectivity restored. Starting automatic sync…');
+        this.wasOnline = true;
+        await this.syncNow();
+      } else {
+        this.wasOnline = nowOnline;
+      }
+    } catch {
+      // If the check itself fails, mark as offline
+      this.wasOnline = false;
     }
   }
 }

@@ -44,8 +44,8 @@ router.get('/simple', async (_req: Request, res: Response) => {
 router.post('/', requireRole('administrador'), async (req: Request, res: Response) => {
   try {
     const { usuario, password, nombre_completo, cargo, rol } = req.body;
-    const userId = crypto.randomUUID();
-    const perfilId = crypto.randomUUID();
+    const userId = req.body.id || crypto.randomUUID();
+    const perfilId = req.body.perfilId || crypto.randomUUID();
     const pool = getPool();
     const hashed = hashPassword(password);
 

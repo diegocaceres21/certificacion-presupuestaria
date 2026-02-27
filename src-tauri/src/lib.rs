@@ -1,3 +1,4 @@
+mod api_forward;
 mod auth;
 mod commands;
 mod db;
@@ -49,6 +50,8 @@ pub fn run() {
             // Initialize SQLite pool using Tauri's async runtime
             match tauri::async_runtime::block_on(db::create_pool(&db_path)) {
                 Ok(pool) => {
+                    // Run idempotent column migrations (adds sync_status to catalog tables on existing DBs)
+                    tauri::async_runtime::block_on(db::run_column_migrations(&pool));
                     app.manage(pool);
                     log::info!("Local database initialized successfully");
                 }
@@ -70,13 +73,13 @@ pub fn run() {
             let api_url = db::resolve_api_url();
             app.manage(models::ApiConfig { base_url: api_url });
 
-            // Trigger initial sync in background (non-blocking)
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = sync::run_initial_sync(&app_handle).await {
-                    log::warn!("Initial sync failed (working offline): {}", e);
-                }
+            // Store auth token holder (initially empty, set on login)
+            app.manage(models::AuthToken {
+                token: std::sync::Mutex::new(None),
             });
+
+            // NOTE: initial sync is deferred until after the user logs in.
+            // The login command triggers a post-login sync automatically.
 
             Ok(())
         })
@@ -85,6 +88,7 @@ pub fn run() {
             auth_cmd::login,
             auth_cmd::verify_token,
             auth_cmd::cambiar_password,
+            auth_cmd::logout,
             // Certificaciones
             certificaciones::listar_certificaciones,
             certificaciones::obtener_certificacion,

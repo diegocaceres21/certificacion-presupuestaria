@@ -27,34 +27,48 @@ router.post('/pull', async (req: Request, res: Response) => {
     const pool = getPool();
     const lastSync = req.body.last_sync as string | undefined;
 
-    const [[{ now: serverTime }]] = await pool.query<RowDataPacket[]>('SELECT NOW() as now');
+    const [[{ now: serverTime }]] = await pool.query<RowDataPacket[]>(
+      "SELECT DATE_FORMAT(NOW(), '%Y-%m-%dT%H:%i:%s') as now"
+    );
 
     // Catalogs — always return full, raw table data
+    // NOTE: MySQL BOOLEAN is TINYINT(1), so we cast to true/false via
+    // CAST(activo AS UNSIGNED) and let the helper convert to boolean.
     const [dependencias] = await pool.query<RowDataPacket[]>(
-      'SELECT id, codigo, dependencia, activo FROM dependencia ORDER BY codigo'
+      'SELECT id, codigo, dependencia, CAST(activo AS UNSIGNED) as activo FROM dependencia ORDER BY codigo'
     );
     const [tipoCuentas] = await pool.query<RowDataPacket[]>(
-      'SELECT id, tipo, activo FROM tipo_cuenta ORDER BY tipo'
+      'SELECT id, tipo, CAST(activo AS UNSIGNED) as activo FROM tipo_cuenta ORDER BY tipo'
     );
     const [unidades] = await pool.query<RowDataPacket[]>(
-      'SELECT id, id_dependencia, codigo, unidad, activo FROM unidad_organizacional ORDER BY codigo'
+      'SELECT id, id_dependencia, codigo, unidad, CAST(activo AS UNSIGNED) as activo FROM unidad_organizacional ORDER BY codigo'
     );
     const [cuentasContables] = await pool.query<RowDataPacket[]>(
-      'SELECT id, id_tipo_cuenta, id_cuenta_padre, codigo, cuenta, nivel, activo FROM cuenta_contable ORDER BY codigo'
+      `SELECT id, id_tipo_cuenta, id_cuenta_padre, codigo, cuenta,
+              COALESCE(nivel, 0) as nivel,
+              CAST(activo AS UNSIGNED) as activo
+       FROM cuenta_contable ORDER BY codigo`
     );
     const [proyectos] = await pool.query<RowDataPacket[]>(
-      'SELECT id, nombre, descripcion, pei, activo FROM proyecto ORDER BY nombre'
+      'SELECT id, nombre, descripcion, pei, CAST(activo AS UNSIGNED) as activo FROM proyecto ORDER BY nombre'
     );
     // Include password hash for offline login support
     const [usuarios] = await pool.query<RowDataPacket[]>(
-      'SELECT id, usuario, password, activo FROM usuario'
+      'SELECT id, usuario, password, CAST(activo AS UNSIGNED) as activo FROM usuario'
     );
     const [perfiles] = await pool.query<RowDataPacket[]>(
       'SELECT id, id_usuario, nombre_completo, cargo, rol FROM perfil'
     );
 
     // Certificaciones — incremental if last_sync provided
-    let certQuery = 'SELECT id, id_unidad, id_cuenta_contable, id_proyecto, generado_por, concepto, nro_certificacion, anio_certificacion, fecha_certificacion, monto_total, comentario, created_at, updated_at, deleted_at FROM certificacion';
+    // CAST monto_total to CHAR since Rust expects a string for decimal amounts
+    let certQuery = `SELECT id, id_unidad, id_cuenta_contable, id_proyecto, generado_por, concepto, nro_certificacion, anio_certificacion,
+             DATE_FORMAT(fecha_certificacion, '%Y-%m-%d') as fecha_certificacion,
+             CAST(monto_total AS CHAR) as monto_total, comentario,
+             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') as created_at,
+             DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at,
+             DATE_FORMAT(deleted_at, '%Y-%m-%dT%H:%i:%s') as deleted_at
+             FROM certificacion`;
     const certParams: string[] = [];
     if (lastSync) {
       certQuery += ' WHERE updated_at > ?';
@@ -64,7 +78,17 @@ router.post('/pull', async (req: Request, res: Response) => {
     const [certificaciones] = await pool.query<RowDataPacket[]>(certQuery, certParams);
 
     // Modificaciones — incremental
-    let modQuery = 'SELECT id, id_certificacion, modificado_por, monto_antiguo, monto_nuevo, concepto_antiguo, concepto_nuevo, fecha_hora, comentario, created_at, updated_at, deleted_at FROM modificacion';
+    // CAST decimal fields to CHAR for Rust string compatibility
+    let modQuery = `SELECT id, id_certificacion, modificado_por,
+             CAST(monto_antiguo AS CHAR) as monto_antiguo,
+             CAST(monto_nuevo AS CHAR) as monto_nuevo,
+             concepto_antiguo, concepto_nuevo,
+             DATE_FORMAT(fecha_hora, '%Y-%m-%dT%H:%i:%s') as fecha_hora,
+             comentario,
+             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') as created_at,
+             DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%s') as updated_at,
+             DATE_FORMAT(deleted_at, '%Y-%m-%dT%H:%i:%s') as deleted_at
+             FROM modificacion`;
     const modParams: string[] = [];
     if (lastSync) {
       modQuery += ' WHERE created_at > ?';
@@ -74,7 +98,9 @@ router.post('/pull', async (req: Request, res: Response) => {
     const [modificaciones] = await pool.query<RowDataPacket[]>(modQuery, modParams);
 
     // Observaciones — incremental
-    let obsQuery = 'SELECT id, id_certificacion, creado_por, comentario, created_at FROM observacion_certificacion';
+    let obsQuery = `SELECT id, id_certificacion, creado_por, comentario,
+             DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') as created_at
+             FROM observacion_certificacion`;
     const obsParams: string[] = [];
     if (lastSync) {
       obsQuery += ' WHERE created_at > ?';
@@ -83,15 +109,25 @@ router.post('/pull', async (req: Request, res: Response) => {
     obsQuery += ' ORDER BY created_at DESC';
     const [observaciones] = await pool.query<RowDataPacket[]>(obsQuery, obsParams);
 
+    // Convert MySQL tinyint booleans (0/1) to real booleans for Rust serde
+    const toBool = (rows: RowDataPacket[], ...fields: string[]) =>
+      rows.map((r) => {
+        const row = { ...r };
+        for (const f of fields) {
+          if (f in row) row[f] = Boolean(row[f]);
+        }
+        return row;
+      });
+
     res.json({
       server_time: serverTime,
       catalogs: {
-        dependencias,
-        tipo_cuentas: tipoCuentas,
-        unidades,
-        cuentas_contables: cuentasContables,
-        proyectos,
-        usuarios,
+        dependencias: toBool(dependencias as RowDataPacket[], 'activo'),
+        tipo_cuentas: toBool(tipoCuentas as RowDataPacket[], 'activo'),
+        unidades: toBool(unidades as RowDataPacket[], 'activo'),
+        cuentas_contables: toBool(cuentasContables as RowDataPacket[], 'activo'),
+        proyectos: toBool(proyectos as RowDataPacket[], 'activo'),
+        usuarios: toBool(usuarios as RowDataPacket[], 'activo'),
         perfiles,
       },
       certificaciones,
@@ -146,11 +182,20 @@ router.post('/push', async (req: Request, res: Response) => {
           );
           accepted.push(row.id);
         } else {
-          // Check for conflict: if server was updated after client's version
+          // Conflict detection: compare server's current updated_at against
+          // the server_updated_at the client stored during its last pull.
+          // This avoids false conflicts due to client/server clock differences.
           const serverUpdatedAt = new Date(existing[0].updated_at).getTime();
-          const clientUpdatedAt = new Date(row.updated_at).getTime();
+          const lastSeenByClient = row.server_updated_at
+            ? new Date(row.server_updated_at).getTime()
+            : null;
 
-          if (serverUpdatedAt > clientUpdatedAt) {
+          // Conflict only if the server version changed since the client last
+          // pulled it. If client has no server_updated_at (= it created the
+          // record and never pulled), accept unconditionally.
+          const isConflict = lastSeenByClient !== null && serverUpdatedAt > lastSeenByClient;
+
+          if (isConflict) {
             // Conflict — server has newer version
             const [serverRow] = await pool.query<RowDataPacket[]>(
               'SELECT * FROM certificacion WHERE id = ?',

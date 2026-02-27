@@ -33,7 +33,7 @@ router.post('/', requireRole('administrador', 'encargado'), async (req: Request,
   try {
     const { id_certificacion, comentario } = req.body;
     const userId = req.claims!.sub;
-    const id = crypto.randomUUID();
+    const id = req.body.id || crypto.randomUUID();
     const pool = getPool();
 
     await pool.query(

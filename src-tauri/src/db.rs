@@ -71,7 +71,9 @@ CREATE TABLE IF NOT EXISTS dependencia (
     dependencia TEXT NOT NULL,
     activo INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    sync_operation TEXT NOT NULL DEFAULT 'none'
 );
 
 CREATE TABLE IF NOT EXISTS tipo_cuenta (
@@ -79,7 +81,9 @@ CREATE TABLE IF NOT EXISTS tipo_cuenta (
     tipo TEXT NOT NULL UNIQUE,
     activo INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    sync_operation TEXT NOT NULL DEFAULT 'none'
 );
 
 CREATE TABLE IF NOT EXISTS unidad_organizacional (
@@ -90,6 +94,8 @@ CREATE TABLE IF NOT EXISTS unidad_organizacional (
     activo INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    sync_operation TEXT NOT NULL DEFAULT 'none',
     FOREIGN KEY (id_dependencia) REFERENCES dependencia(id)
 );
 
@@ -103,6 +109,8 @@ CREATE TABLE IF NOT EXISTS cuenta_contable (
     activo INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    sync_operation TEXT NOT NULL DEFAULT 'none',
     FOREIGN KEY (id_tipo_cuenta) REFERENCES tipo_cuenta(id),
     FOREIGN KEY (id_cuenta_padre) REFERENCES cuenta_contable(id)
 );
@@ -114,7 +122,9 @@ CREATE TABLE IF NOT EXISTS proyecto (
     pei TEXT,
     activo INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    sync_operation TEXT NOT NULL DEFAULT 'none'
 );
 
 CREATE TABLE IF NOT EXISTS usuario (
@@ -209,4 +219,35 @@ CREATE INDEX IF NOT EXISTS idx_mod_cert ON modificacion(id_certificacion);
 CREATE INDEX IF NOT EXISTS idx_obs_cert ON observacion_certificacion(id_certificacion);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cert_nro_anio ON certificacion(nro_certificacion, anio_certificacion);
 "#;
+
+/// Migrations to add new columns to existing databases (idempotent).
+/// SQLite doesn't support ADD COLUMN IF NOT EXISTS, so we ignore errors.
+pub async fn run_column_migrations(pool: &SqlitePool) {
+    // Each statement is silently ignored when the column already exists.
+    let migrations: &[&str] = &[
+        // sync_status columns (added in v0.2.4)
+        "ALTER TABLE dependencia ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'",
+        "ALTER TABLE tipo_cuenta ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'",
+        "ALTER TABLE unidad_organizacional ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'",
+        "ALTER TABLE cuenta_contable ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'",
+        "ALTER TABLE proyecto ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'",
+        // sync_operation columns — distinguish create ('create') from update ('update')
+        "ALTER TABLE dependencia ADD COLUMN sync_operation TEXT NOT NULL DEFAULT 'none'",
+        "ALTER TABLE tipo_cuenta ADD COLUMN sync_operation TEXT NOT NULL DEFAULT 'none'",
+        "ALTER TABLE unidad_organizacional ADD COLUMN sync_operation TEXT NOT NULL DEFAULT 'none'",
+        "ALTER TABLE cuenta_contable ADD COLUMN sync_operation TEXT NOT NULL DEFAULT 'none'",
+        "ALTER TABLE proyecto ADD COLUMN sync_operation TEXT NOT NULL DEFAULT 'none'",
+        // Indexes for sync_status — placed here so they run AFTER the ALTER TABLE statements
+        "CREATE INDEX IF NOT EXISTS idx_dep_sync ON dependencia(sync_status)",
+        "CREATE INDEX IF NOT EXISTS idx_tipo_cuenta_sync ON tipo_cuenta(sync_status)",
+        "CREATE INDEX IF NOT EXISTS idx_unidad_sync ON unidad_organizacional(sync_status)",
+        "CREATE INDEX IF NOT EXISTS idx_cuenta_sync ON cuenta_contable(sync_status)",
+        "CREATE INDEX IF NOT EXISTS idx_proyecto_sync ON proyecto(sync_status)",
+    ];
+    for sql in migrations {
+        // Ignore error — column / index may already exist (idempotent)
+        let _ = sqlx::query(sql).execute(pool).await;
+    }
+    log::info!("Column migrations applied (existing columns skipped silently)");
+}
 

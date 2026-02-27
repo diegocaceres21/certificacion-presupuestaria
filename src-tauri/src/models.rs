@@ -3,11 +3,82 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 // ============================================
+// Serde helpers — accept string OR number from MySQL
+// ============================================
+/// MySQL with `decimalNumbers: true` can return DECIMAL columns as JS numbers
+/// even when wrapped in CAST(... AS CHAR). These helpers accept both forms.
+pub mod serde_helpers {
+    use serde::de::{self, Visitor};
+    use serde::Deserializer;
+    use std::fmt;
+
+    struct StringOrNumberVisitor;
+    impl<'de> Visitor<'de> for StringOrNumberVisitor {
+        type Value = String;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "a string or number")
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> { Ok(v.to_string()) }
+        fn visit_string<E: de::Error>(self, v: String) -> Result<String, E> { Ok(v) }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<String, E> { Ok(v.to_string()) }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<String, E> { Ok(v.to_string()) }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<String, E> {
+            // Format without unnecessary trailing zeros (e.g. 1000.50 not 1000.5000000001)
+            Ok(format!("{:.2}", v))
+        }
+    }
+
+    pub fn de_string_or_number<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+        d.deserialize_any(StringOrNumberVisitor)
+    }
+
+    struct OptStringOrNumberVisitor;
+    impl<'de> Visitor<'de> for OptStringOrNumberVisitor {
+        type Value = Option<String>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "null, a string, or a number")
+        }
+        fn visit_none<E: de::Error>(self) -> Result<Option<String>, E> { Ok(None) }
+        fn visit_unit<E: de::Error>(self) -> Result<Option<String>, E> { Ok(None) }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Option<String>, E> { Ok(Some(v.to_string())) }
+        fn visit_string<E: de::Error>(self, v: String) -> Result<Option<String>, E> { Ok(Some(v)) }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<Option<String>, E> { Ok(Some(v.to_string())) }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<Option<String>, E> { Ok(Some(v.to_string())) }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<Option<String>, E> { Ok(Some(format!("{:.2}", v))) }
+    }
+
+    pub fn de_opt_string_or_number<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+        d.deserialize_any(OptStringOrNumberVisitor)
+    }
+
+    /// MySQL BOOLEAN is TINYINT(1) — arrives as 0 or 1, not true/false.
+    pub fn de_bool_from_int<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+        struct BoolVisitor;
+        impl<'de> Visitor<'de> for BoolVisitor {
+            type Value = bool;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a boolean or 0/1 integer")
+            }
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<bool, E> { Ok(v) }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<bool, E> { Ok(v != 0) }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<bool, E> { Ok(v != 0) }
+        }
+        d.deserialize_any(BoolVisitor)
+    }
+}
+
+// ============================================
 // App Config (managed state)
 // ============================================
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
     pub base_url: Option<String>,
+}
+
+/// Shared auth token for sync requests.
+/// Updated on login/logout from the frontend.
+pub struct AuthToken {
+    pub token: std::sync::Mutex<Option<String>>,
 }
 
 // ============================================
@@ -486,11 +557,19 @@ pub struct SyncCertificacionRow {
     pub nro_certificacion: i32,
     pub anio_certificacion: i32,
     pub fecha_certificacion: String,
+    /// MySQL DECIMAL returned as string OR number depending on driver config.
+    #[serde(deserialize_with = "serde_helpers::de_string_or_number")]
     pub monto_total: String,
     pub comentario: Option<String>,
     pub created_at: String,
-    pub updated_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
     pub deleted_at: Option<String>,
+    /// The server's `updated_at` as last seen by the client during pull.
+    /// Used by the server push handler to detect genuine conflicts
+    /// (another device changed the record since the client last pulled).
+    #[serde(default)]
+    pub server_updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -498,14 +577,18 @@ pub struct SyncModificacionRow {
     pub id: String,
     pub id_certificacion: String,
     pub modificado_por: String,
+    /// MySQL DECIMAL nullable — returned as null, string, or number.
+    #[serde(default, deserialize_with = "serde_helpers::de_opt_string_or_number")]
     pub monto_antiguo: Option<String>,
+    #[serde(default, deserialize_with = "serde_helpers::de_opt_string_or_number")]
     pub monto_nuevo: Option<String>,
     pub concepto_antiguo: Option<String>,
     pub concepto_nuevo: Option<String>,
     pub fecha_hora: String,
     pub comentario: Option<String>,
     pub created_at: String,
-    pub updated_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
     pub deleted_at: Option<String>,
 }
 
@@ -524,6 +607,7 @@ pub struct SyncDependenciaRow {
     pub id: String,
     pub codigo: String,
     pub dependencia: String,
+    #[serde(deserialize_with = "serde_helpers::de_bool_from_int")]
     pub activo: bool,
 }
 
@@ -531,6 +615,7 @@ pub struct SyncDependenciaRow {
 pub struct SyncTipoCuentaRow {
     pub id: String,
     pub tipo: String,
+    #[serde(deserialize_with = "serde_helpers::de_bool_from_int")]
     pub activo: bool,
 }
 
@@ -540,6 +625,7 @@ pub struct SyncUnidadRow {
     pub id_dependencia: String,
     pub codigo: i32,
     pub unidad: String,
+    #[serde(deserialize_with = "serde_helpers::de_bool_from_int")]
     pub activo: bool,
 }
 
@@ -551,6 +637,7 @@ pub struct SyncCuentaContableRow {
     pub codigo: String,
     pub cuenta: String,
     pub nivel: i32,
+    #[serde(deserialize_with = "serde_helpers::de_bool_from_int")]
     pub activo: bool,
 }
 
@@ -560,6 +647,7 @@ pub struct SyncProyectoRow {
     pub nombre: String,
     pub descripcion: Option<String>,
     pub pei: Option<String>,
+    #[serde(deserialize_with = "serde_helpers::de_bool_from_int")]
     pub activo: bool,
 }
 
@@ -568,6 +656,7 @@ pub struct SyncUsuarioRow {
     pub id: String,
     pub usuario: String,
     pub password: String,
+    #[serde(deserialize_with = "serde_helpers::de_bool_from_int")]
     pub activo: bool,
 }
 

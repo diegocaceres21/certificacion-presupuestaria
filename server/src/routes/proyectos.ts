@@ -23,11 +23,12 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', requireRole('administrador', 'encargado'), async (req: Request, res: Response) => {
   try {
     const { nombre, descripcion, pei } = req.body;
-    const id = crypto.randomUUID();
+    const id = req.body.id || crypto.randomUUID();
     const pool = getPool();
 
     await pool.query(
-      'INSERT INTO proyecto (id, nombre, descripcion, pei) VALUES (?, ?, ?, ?)',
+      `INSERT INTO proyecto (id, nombre, descripcion, pei) VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE nombre = VALUES(nombre), descripcion = VALUES(descripcion), pei = VALUES(pei)`,
       [id, nombre, descripcion || null, pei || null]
     );
 

@@ -23,11 +23,12 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', requireRole('administrador', 'encargado'), async (req: Request, res: Response) => {
   try {
     const { tipo } = req.body;
-    const id = crypto.randomUUID();
+    const id = req.body.id || crypto.randomUUID();
     const pool = getPool();
 
     await pool.query(
-      'INSERT INTO tipo_cuenta (id, tipo) VALUES (?, ?)',
+      `INSERT INTO tipo_cuenta (id, tipo) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE tipo = VALUES(tipo)`,
       [id, tipo]
     );
 

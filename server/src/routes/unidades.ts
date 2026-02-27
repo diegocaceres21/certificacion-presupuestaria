@@ -28,11 +28,12 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', requireRole('administrador', 'encargado'), async (req: Request, res: Response) => {
   try {
     const { id_dependencia, codigo, unidad } = req.body;
-    const id = crypto.randomUUID();
+    const id = req.body.id || crypto.randomUUID();
     const pool = getPool();
 
     await pool.query(
-      'INSERT INTO unidad_organizacional (id, id_dependencia, codigo, unidad) VALUES (?, ?, ?, ?)',
+      `INSERT INTO unidad_organizacional (id, id_dependencia, codigo, unidad) VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE id_dependencia = VALUES(id_dependencia), codigo = VALUES(codigo), unidad = VALUES(unidad)`,
       [id, id_dependencia, codigo, unidad]
     );
 

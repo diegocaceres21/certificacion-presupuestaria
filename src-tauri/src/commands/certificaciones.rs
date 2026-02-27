@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::auth;
 use crate::models::*;
+use crate::sync;
 
 #[tauri::command]
 pub async fn listar_certificaciones(
@@ -20,7 +21,7 @@ pub async fn listar_certificaciones(
     let mut query = String::from(
         "SELECT
             c.id, c.nro_certificacion, c.anio_certificacion,
-            c.fecha_certificacion, c.concepto, c.monto_total, c.comentario,
+            DATE(c.fecha_certificacion) as fecha_certificacion, c.concepto, c.monto_total, c.comentario,
             uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
             cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
             p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,
@@ -95,7 +96,7 @@ pub async fn obtener_certificacion(
     let result = sqlx::query_as::<_, CertificacionDetalle>(
         "SELECT
             c.id, c.nro_certificacion, c.anio_certificacion,
-            c.fecha_certificacion, c.concepto, c.monto_total, c.comentario,
+            DATE(c.fecha_certificacion) as fecha_certificacion, c.concepto, c.monto_total, c.comentario,
             uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
             cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
             p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,
@@ -121,6 +122,8 @@ pub async fn obtener_certificacion(
 #[tauri::command]
 pub async fn crear_certificacion(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     data: CrearCertificacion,
 ) -> Result<CertificacionDetalle, String> {
@@ -182,12 +185,17 @@ pub async fn crear_certificacion(
         }
     }
 
+    // Attempt immediate push while online (best-effort)
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
+
     obtener_certificacion_internal(pool.inner(), &id).await
 }
 
 #[tauri::command]
 pub async fn editar_certificacion(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     id: String,
     data: EditarCertificacion,
@@ -201,7 +209,7 @@ pub async fn editar_certificacion(
 
     // Get current certification
     let current = sqlx::query_as::<_, Certificacion>(
-        "SELECT * FROM certificacion WHERE id = ? AND deleted_at IS NULL"
+        "SELECT id, id_unidad, id_cuenta_contable, id_proyecto, generado_por, concepto, nro_certificacion, anio_certificacion, DATE(fecha_certificacion) as fecha_certificacion, monto_total, comentario, created_at, updated_at, deleted_at FROM certificacion WHERE id = ? AND deleted_at IS NULL"
     )
     .bind(&id)
     .fetch_optional(pool.inner())
@@ -244,7 +252,7 @@ pub async fn editar_certificacion(
     let new_comentario = data.comentario.or(current.comentario);
 
     sqlx::query(
-        "UPDATE certificacion SET id_unidad = ?, id_cuenta_contable = ?, id_proyecto = ?, concepto = ?, monto_total = ?, comentario = ?, sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ?"
+        "UPDATE certificacion SET id_unidad = ?, id_cuenta_contable = ?, id_proyecto = ?, concepto = ?, monto_total = ?, comentario = ?, updated_at = datetime('now'), sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ?"
     )
     .bind(&new_unidad)
     .bind(&new_cuenta)
@@ -257,12 +265,17 @@ pub async fn editar_certificacion(
     .await
     .map_err(|e| format!("Error actualizando certificación: {}", e))?;
 
+    // Attempt immediate push while online (best-effort)
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
+
     obtener_certificacion_internal(pool.inner(), &id).await
 }
 
 #[tauri::command]
 pub async fn eliminar_certificacion(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     id: String,
 ) -> Result<String, String> {
@@ -273,11 +286,14 @@ pub async fn eliminar_certificacion(
         return Err("Solo un administrador puede eliminar certificaciones".to_string());
     }
 
-    sqlx::query("UPDATE certificacion SET deleted_at = datetime('now'), sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ? AND deleted_at IS NULL")
+    sqlx::query("UPDATE certificacion SET deleted_at = datetime('now'), updated_at = datetime('now'), sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ? AND deleted_at IS NULL")
         .bind(&id)
         .execute(pool.inner())
         .await
         .map_err(|e| format!("Error: {}", e))?;
+
+    // Attempt immediate push while online (best-effort)
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
 
     Ok("Certificación eliminada correctamente".to_string())
 }
@@ -289,7 +305,7 @@ async fn obtener_certificacion_internal(
     sqlx::query_as::<_, CertificacionDetalle>(
         "SELECT
             c.id, c.nro_certificacion, c.anio_certificacion,
-            c.fecha_certificacion, c.concepto, c.monto_total, c.comentario,
+            DATE(c.fecha_certificacion) as fecha_certificacion, c.concepto, c.monto_total, c.comentario,
             uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
             cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
             p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,

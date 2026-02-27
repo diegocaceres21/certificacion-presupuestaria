@@ -2,6 +2,7 @@ import { Component, inject, signal, ChangeDetectionStrategy, OnInit } from '@ang
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { SyncService } from '../../../core/services/sync.service';
 import { getVersion } from '@tauri-apps/api/app';
 
 @Component({
@@ -54,7 +55,7 @@ import { getVersion } from '@tauri-apps/api/app';
           >
             @if (loading()) {
               <span class="spinner"></span>
-              Ingresando...
+              {{ loadingMessage() }}
             } @else {
               Iniciar Sesión
             }
@@ -180,10 +181,12 @@ import { getVersion } from '@tauri-apps/api/app';
 })
 export class Login implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly syncService = inject(SyncService);
   private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
 
   protected readonly loading = signal(false);
+  protected readonly loadingMessage = signal('Ingresando...');
   protected readonly errorMessage = signal('');
   protected readonly appVersion = signal('...');
 
@@ -210,10 +213,14 @@ export class Login implements OnInit {
     if (this.form.invalid) return;
 
     this.loading.set(true);
+    this.loadingMessage.set('Ingresando...');
     this.errorMessage.set('');
 
     try {
       await this.auth.login(this.form.getRawValue());
+      // Sync data from server before navigating (populates local DB)
+      this.loadingMessage.set('Sincronizando datos...');
+      await this.syncService.syncNow();
       this.router.navigate(['/dashboard']);
     } catch (error) {
       this.errorMessage.set(typeof error === 'string' ? error : 'Error al iniciar sesión');

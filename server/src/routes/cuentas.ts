@@ -66,9 +66,10 @@ router.post('/', requireRole('administrador', 'encargado'), async (req: Request,
       }
     }
 
-    const id = crypto.randomUUID();
+    const id = req.body.id || crypto.randomUUID();
     await pool.query(
-      'INSERT INTO cuenta_contable (id, id_tipo_cuenta, id_cuenta_padre, codigo, cuenta, nivel) VALUES (?, ?, ?, ?, ?, ?)',
+      `INSERT INTO cuenta_contable (id, id_tipo_cuenta, id_cuenta_padre, codigo, cuenta, nivel) VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE id_tipo_cuenta = VALUES(id_tipo_cuenta), id_cuenta_padre = VALUES(id_cuenta_padre), codigo = VALUES(codigo), cuenta = VALUES(cuenta), nivel = VALUES(nivel)`,
       [id, id_tipo_cuenta, id_cuenta_padre || null, codigo, cuenta, nivel]
     );
 

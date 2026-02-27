@@ -2,6 +2,7 @@ use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
+use crate::api_forward;
 use crate::auth;
 use crate::models::*;
 
@@ -27,6 +28,8 @@ pub async fn listar_dependencias(
 #[tauri::command]
 pub async fn crear_dependencia(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     data: CrearDependencia,
 ) -> Result<Dependencia, String> {
@@ -39,13 +42,24 @@ pub async fn crear_dependencia(
 
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query("INSERT INTO dependencia (id, codigo, dependencia) VALUES (?, ?, ?)")
+    sqlx::query("INSERT INTO dependencia (id, codigo, dependencia, sync_status, sync_operation) VALUES (?, ?, ?, 'pending', 'create')")
         .bind(&id)
         .bind(&data.codigo)
         .bind(&data.dependencia)
         .execute(pool.inner())
         .await
         .map_err(|e| format!("Error creando dependencia: {}", e))?;
+
+    // Forward to REST API — if it succeeds immediately mark as synced
+    let synced = api_forward::post(&config, &auth_token, "dependencias", &serde_json::json!({
+        "id": id,
+        "codigo": data.codigo,
+        "dependencia": data.dependencia,
+    })).await;
+    if synced {
+        sqlx::query("UPDATE dependencia SET sync_status = 'synced', sync_operation = 'none' WHERE id = ?")
+            .bind(&id).execute(pool.inner()).await.ok();
+    }
 
     sqlx::query_as::<_, Dependencia>("SELECT * FROM dependencia WHERE id = ?")
         .bind(&id)
@@ -57,6 +71,8 @@ pub async fn crear_dependencia(
 #[tauri::command]
 pub async fn editar_dependencia(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     id: String,
     data: EditarDependencia,
@@ -75,14 +91,29 @@ pub async fn editar_dependencia(
         .map_err(|e| format!("Error: {}", e))?
         .ok_or_else(|| "Dependencia no encontrada".to_string())?;
 
-    sqlx::query("UPDATE dependencia SET codigo = ?, dependencia = ?, activo = ? WHERE id = ?")
-        .bind(data.codigo.unwrap_or(current.codigo))
-        .bind(data.dependencia.unwrap_or(current.dependencia))
-        .bind(data.activo.unwrap_or(current.activo))
+    let codigo = data.codigo.unwrap_or(current.codigo);
+    let dependencia = data.dependencia.unwrap_or(current.dependencia);
+    let activo = data.activo.unwrap_or(current.activo);
+
+    sqlx::query("UPDATE dependencia SET codigo = ?, dependencia = ?, activo = ?, sync_status = 'pending', sync_operation = CASE WHEN sync_operation = 'create' THEN 'create' ELSE 'update' END WHERE id = ?")
+        .bind(&codigo)
+        .bind(&dependencia)
+        .bind(activo)
         .bind(&id)
         .execute(pool.inner())
         .await
         .map_err(|e| format!("Error actualizando dependencia: {}", e))?;
+
+    // Forward to REST API — if it succeeds immediately mark as synced
+    let synced = api_forward::put(&config, &auth_token, "dependencias", &id, &serde_json::json!({
+        "codigo": codigo,
+        "dependencia": dependencia,
+        "activo": activo,
+    })).await;
+    if synced {
+        sqlx::query("UPDATE dependencia SET sync_status = 'synced', sync_operation = 'none' WHERE id = ?")
+            .bind(&id).execute(pool.inner()).await.ok();
+    }
 
     sqlx::query_as::<_, Dependencia>("SELECT * FROM dependencia WHERE id = ?")
         .bind(&id)
@@ -118,6 +149,8 @@ pub async fn listar_unidades(
 #[tauri::command]
 pub async fn crear_unidad(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     data: CrearUnidad,
 ) -> Result<UnidadConDependencia, String> {
@@ -130,7 +163,7 @@ pub async fn crear_unidad(
 
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query("INSERT INTO unidad_organizacional (id, id_dependencia, codigo, unidad) VALUES (?, ?, ?, ?)")
+    sqlx::query("INSERT INTO unidad_organizacional (id, id_dependencia, codigo, unidad, sync_status, sync_operation) VALUES (?, ?, ?, ?, 'pending', 'create')")
         .bind(&id)
         .bind(&data.id_dependencia)
         .bind(data.codigo)
@@ -138,6 +171,18 @@ pub async fn crear_unidad(
         .execute(pool.inner())
         .await
         .map_err(|e| format!("Error creando unidad: {}", e))?;
+
+    // Forward to REST API — if it succeeds immediately mark as synced
+    let synced = api_forward::post(&config, &auth_token, "unidades", &serde_json::json!({
+        "id": id,
+        "id_dependencia": data.id_dependencia,
+        "codigo": data.codigo,
+        "unidad": data.unidad,
+    })).await;
+    if synced {
+        sqlx::query("UPDATE unidad_organizacional SET sync_status = 'synced', sync_operation = 'none' WHERE id = ?")
+            .bind(&id).execute(pool.inner()).await.ok();
+    }
 
     sqlx::query_as::<_, UnidadConDependencia>(
         "SELECT
@@ -156,6 +201,8 @@ pub async fn crear_unidad(
 #[tauri::command]
 pub async fn editar_unidad(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     id: String,
     data: EditarUnidad,
@@ -176,15 +223,32 @@ pub async fn editar_unidad(
     .map_err(|e| format!("Error: {}", e))?
     .ok_or_else(|| "Unidad no encontrada".to_string())?;
 
-    sqlx::query("UPDATE unidad_organizacional SET id_dependencia = ?, codigo = ?, unidad = ?, activo = ? WHERE id = ?")
-        .bind(data.id_dependencia.unwrap_or(current.id_dependencia))
-        .bind(data.codigo.unwrap_or(current.codigo))
-        .bind(data.unidad.unwrap_or(current.unidad))
-        .bind(data.activo.unwrap_or(current.activo))
+    let id_dependencia = data.id_dependencia.unwrap_or(current.id_dependencia);
+    let codigo = data.codigo.unwrap_or(current.codigo);
+    let unidad = data.unidad.unwrap_or(current.unidad);
+    let activo = data.activo.unwrap_or(current.activo);
+
+    sqlx::query("UPDATE unidad_organizacional SET id_dependencia = ?, codigo = ?, unidad = ?, activo = ?, sync_status = 'pending', sync_operation = CASE WHEN sync_operation = 'create' THEN 'create' ELSE 'update' END WHERE id = ?")
+        .bind(&id_dependencia)
+        .bind(codigo)
+        .bind(&unidad)
+        .bind(activo)
         .bind(&id)
         .execute(pool.inner())
         .await
         .map_err(|e| format!("Error actualizando unidad: {}", e))?;
+
+    // Forward to REST API — if it succeeds immediately mark as synced
+    let synced = api_forward::put(&config, &auth_token, "unidades", &id, &serde_json::json!({
+        "id_dependencia": id_dependencia,
+        "codigo": codigo,
+        "unidad": unidad,
+        "activo": activo,
+    })).await;
+    if synced {
+        sqlx::query("UPDATE unidad_organizacional SET sync_status = 'synced', sync_operation = 'none' WHERE id = ?")
+            .bind(&id).execute(pool.inner()).await.ok();
+    }
 
     sqlx::query_as::<_, UnidadConDependencia>(
         "SELECT

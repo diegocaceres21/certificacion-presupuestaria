@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::auth;
 use crate::models::*;
+use crate::sync;
 
 #[tauri::command]
 pub async fn listar_observaciones(
@@ -36,6 +37,8 @@ pub async fn listar_observaciones(
 #[tauri::command]
 pub async fn crear_observacion(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     data: CrearObservacion,
 ) -> Result<ObservacionDetalle, String> {
@@ -73,6 +76,9 @@ pub async fn crear_observacion(
     .fetch_one(pool.inner())
     .await
     .map_err(|e| format!("Error: {}", e))?;
+
+    // Attempt immediate push while online (best-effort)
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
 
     Ok(result)
 }

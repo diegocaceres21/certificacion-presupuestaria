@@ -36,6 +36,8 @@ export class AuthService {
     this._currentUser.set(null);
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    // Clear the backend auth token so sync stops
+    invoke('logout').catch(() => {});
   }
 
   getToken(): string {

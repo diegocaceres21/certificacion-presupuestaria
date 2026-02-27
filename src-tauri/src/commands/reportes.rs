@@ -18,7 +18,7 @@ pub async fn obtener_reporte(
 
     // Summary
     let resumen_query = format!(
-        "SELECT COUNT(*) as total_certificaciones, SUM(monto_total) as monto_total
+        "SELECT COUNT(*) as total_certificaciones, CAST(SUM(monto_total) AS TEXT) as monto_total
          FROM certificacion WHERE deleted_at IS NULL {}",
         where_clause
     );
@@ -30,12 +30,12 @@ pub async fn obtener_reporte(
     // By unit
     let por_unidad_query = format!(
         "SELECT uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
-                COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
+                COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
          FROM certificacion c
          INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
          WHERE c.deleted_at IS NULL {}
          GROUP BY uo.id, uo.codigo, uo.unidad
-         ORDER BY monto_total DESC",
+         ORDER BY CAST(SUM(c.monto_total) AS REAL) DESC",
         where_clause
     );
     let por_unidad = sqlx::query_as::<_, ReportePorUnidad>(&por_unidad_query)
@@ -46,7 +46,7 @@ pub async fn obtener_reporte(
     // By account
     let por_cuenta_query = format!(
         "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
-                COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
+                COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
          FROM certificacion c
          INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
          WHERE c.deleted_at IS NULL {}
@@ -62,12 +62,12 @@ pub async fn obtener_reporte(
     // By project
     let por_proyecto_query = format!(
         "SELECT p.nombre as proyecto_nombre,
-                COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
+                COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
          FROM certificacion c
          INNER JOIN proyecto p ON c.id_proyecto = p.id
          WHERE c.deleted_at IS NULL AND c.id_proyecto IS NOT NULL {}
          GROUP BY p.id, p.nombre
-         ORDER BY monto_total DESC",
+         ORDER BY CAST(SUM(c.monto_total) AS REAL) DESC",
         where_clause
     );
     let por_proyecto = sqlx::query_as::<_, ReportePorProyecto>(&por_proyecto_query)
@@ -85,7 +85,7 @@ pub async fn obtener_reporte(
          LEFT JOIN (
            SELECT c.id_cuenta_contable,
                   COUNT(*) as total_certificaciones,
-                  SUM(c.monto_total) as monto_total
+                  CAST(SUM(c.monto_total) AS TEXT) as monto_total
            FROM certificacion c
            WHERE c.deleted_at IS NULL {}
            GROUP BY c.id_cuenta_contable

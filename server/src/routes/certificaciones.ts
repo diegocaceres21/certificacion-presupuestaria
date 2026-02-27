@@ -107,7 +107,7 @@ router.post('/', requireRole('administrador', 'encargado'), async (req: Request,
       [anioActual]
     );
     const nro = (maxRows[0].max_nro || 0) + 1;
-    const id = crypto.randomUUID();
+    const id = req.body.id || crypto.randomUUID();
     const fecha = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
     await pool.query(

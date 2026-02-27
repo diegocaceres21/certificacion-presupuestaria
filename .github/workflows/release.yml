@@ -57,6 +57,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          API_URL: ${{ secrets.API_URL }}
         with:
           tauriScript: npx tauri
           tagName: ${{ github.ref_name }}
@@ -64,4 +65,4 @@ jobs:
           releaseBody: 'Descarga el instalador .msi para Windows.'
           releaseDraft: false
           prerelease: false
-          args: --verbose
+          args: --verbose --bundles msi

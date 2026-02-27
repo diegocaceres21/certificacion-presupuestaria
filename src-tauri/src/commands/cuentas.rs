@@ -2,6 +2,7 @@ use sqlx::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
+use crate::api_forward;
 use crate::auth;
 use crate::models::*;
 
@@ -46,6 +47,8 @@ pub async fn listar_cuentas(
 #[tauri::command]
 pub async fn crear_cuenta(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     data: CrearCuenta,
 ) -> Result<CuentaContable, String> {
@@ -80,7 +83,7 @@ pub async fn crear_cuenta(
     let id = Uuid::new_v4().to_string();
 
     sqlx::query(
-        "INSERT INTO cuenta_contable (id, id_tipo_cuenta, id_cuenta_padre, codigo, cuenta, nivel) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO cuenta_contable (id, id_tipo_cuenta, id_cuenta_padre, codigo, cuenta, nivel, sync_status, sync_operation) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'create')"
     )
         .bind(&id)
         .bind(&data.id_tipo_cuenta)
@@ -92,6 +95,19 @@ pub async fn crear_cuenta(
         .await
         .map_err(|e| format!("Error creando cuenta: {}", e))?;
 
+    // Forward to REST API — if it succeeds immediately mark as synced
+    let synced = api_forward::post(&config, &auth_token, "cuentas", &serde_json::json!({
+        "id": id,
+        "id_tipo_cuenta": data.id_tipo_cuenta,
+        "id_cuenta_padre": data.id_cuenta_padre,
+        "codigo": data.codigo,
+        "cuenta": data.cuenta,
+    })).await;
+    if synced {
+        sqlx::query("UPDATE cuenta_contable SET sync_status = 'synced', sync_operation = 'none' WHERE id = ?")
+            .bind(&id).execute(pool.inner()).await.ok();
+    }
+
     sqlx::query_as::<_, CuentaContable>("SELECT * FROM cuenta_contable WHERE id = ?")
         .bind(&id)
         .fetch_one(pool.inner())
@@ -102,6 +118,8 @@ pub async fn crear_cuenta(
 #[tauri::command]
 pub async fn editar_cuenta(
     pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
     token: String,
     id: String,
     data: EditarCuenta,
@@ -147,19 +165,36 @@ pub async fn editar_cuenta(
         }
     }
 
+    let new_tipo_cuenta = data.id_tipo_cuenta.unwrap_or(current.id_tipo_cuenta.clone());
+    let new_cuenta = data.cuenta.unwrap_or(current.cuenta);
+    let new_activo = data.activo.unwrap_or(current.activo);
+
     sqlx::query(
-        "UPDATE cuenta_contable SET id_tipo_cuenta = ?, id_cuenta_padre = ?, codigo = ?, cuenta = ?, nivel = ?, activo = ? WHERE id = ?"
+        "UPDATE cuenta_contable SET id_tipo_cuenta = ?, id_cuenta_padre = ?, codigo = ?, cuenta = ?, nivel = ?, activo = ?, sync_status = 'pending', sync_operation = CASE WHEN sync_operation = 'create' THEN 'create' ELSE 'update' END WHERE id = ?"
     )
-        .bind(data.id_tipo_cuenta.unwrap_or(current.id_tipo_cuenta.clone()))
+        .bind(&new_tipo_cuenta)
         .bind(&new_padre)
         .bind(&new_codigo)
-        .bind(data.cuenta.unwrap_or(current.cuenta))
+        .bind(&new_cuenta)
         .bind(new_nivel)
-        .bind(data.activo.unwrap_or(current.activo))
+        .bind(new_activo)
         .bind(&id)
         .execute(pool.inner())
         .await
         .map_err(|e| format!("Error actualizando cuenta: {}", e))?;
+
+    // Forward to REST API — if it succeeds immediately mark as synced
+    let synced = api_forward::put(&config, &auth_token, "cuentas", &id, &serde_json::json!({
+        "id_tipo_cuenta": new_tipo_cuenta,
+        "id_cuenta_padre": new_padre,
+        "codigo": new_codigo,
+        "cuenta": new_cuenta,
+        "activo": new_activo,
+    })).await;
+    if synced {
+        sqlx::query("UPDATE cuenta_contable SET sync_status = 'synced', sync_operation = 'none' WHERE id = ?")
+            .bind(&id).execute(pool.inner()).await.ok();
+    }
 
     sqlx::query_as::<_, CuentaContable>("SELECT * FROM cuenta_contable WHERE id = ?")
         .bind(&id)
