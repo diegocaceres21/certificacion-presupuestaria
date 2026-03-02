@@ -708,6 +708,17 @@ pub struct SyncPullResponse {
     pub certificaciones: Vec<SyncCertificacionRow>,
     pub modificaciones: Vec<SyncModificacionRow>,
     pub observaciones: Vec<SyncObservacionRow>,
+    /// Full list of ALL certificacion IDs currently on the server.
+    /// `Some([])` means the table is empty (prune all local synced rows).
+    /// `None` means the server is an older version that doesn't send this field (skip pruning).
+    #[serde(default)]
+    pub all_certificacion_ids: Option<Vec<String>>,
+    /// Full list of ALL modificacion IDs currently on the server.
+    #[serde(default)]
+    pub all_modificacion_ids: Option<Vec<String>>,
+    /// Full list of ALL observacion_certificacion IDs currently on the server.
+    #[serde(default)]
+    pub all_observacion_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

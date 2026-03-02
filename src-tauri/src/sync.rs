@@ -191,10 +191,21 @@ async fn pull_from_server(
     // Apply catalogs (full replace strategy)
     apply_catalogs(pool, &pull_data.catalogs).await?;
 
+    log::info!(
+        "Pull received: {} certificaciones, {} modificaciones, {} observaciones | server IDs: cert={:?} mod={:?} obs={:?}",
+        pull_data.certificaciones.len(),
+        pull_data.modificaciones.len(),
+        pull_data.observaciones.len(),
+        pull_data.all_certificacion_ids.as_ref().map(|v| v.len()),
+        pull_data.all_modificacion_ids.as_ref().map(|v| v.len()),
+        pull_data.all_observacion_ids.as_ref().map(|v| v.len()),
+    );
+
     // Apply certificaciones (upsert, skip locally modified)
-    apply_certificaciones(pool, &pull_data.certificaciones).await?;
-    apply_modificaciones(pool, &pull_data.modificaciones).await?;
-    apply_observaciones(pool, &pull_data.observaciones).await?;
+    // Pass all_*_ids so orphaned local records (hard-deleted on server) are pruned.
+    apply_certificaciones(pool, &pull_data.certificaciones, pull_data.all_certificacion_ids.as_deref()).await?;
+    apply_modificaciones(pool, &pull_data.modificaciones, pull_data.all_modificacion_ids.as_deref()).await?;
+    apply_observaciones(pool, &pull_data.observaciones, pull_data.all_observacion_ids.as_deref()).await?;
 
     // Update last_sync timestamp
     sqlx::query(
@@ -331,6 +342,7 @@ async fn apply_catalogs(pool: &SqlitePool, catalogs: &SyncCatalogs) -> Result<()
 async fn apply_certificaciones(
     pool: &SqlitePool,
     rows: &[SyncCertificacionRow],
+    all_server_ids: Option<&[String]>,
 ) -> Result<(), String> {
     for row in rows {
         // Check if this certificacion has pending local changes
@@ -398,6 +410,30 @@ async fn apply_certificaciones(
         .await
         .map_err(|e| format!("Error upserting certificacion: {}", e))?;
     }
+
+    // Prune certificaciones that were hard-deleted on the server.
+    // `Some(ids)` = server explicitly sent the list (prune orphans, even if empty).
+    // `None` = old server without this field (skip pruning to be safe).
+    if let Some(ids) = all_server_ids {
+        let server_set: std::collections::HashSet<&str> =
+            ids.iter().map(|s| s.as_str()).collect();
+        let local_synced: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM certificacion WHERE sync_status = 'synced'"
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Error fetching local certificaciones: {}", e))?;
+        for (id,) in local_synced {
+            if !server_set.contains(id.as_str()) {
+                sqlx::query("DELETE FROM certificacion WHERE id = ?")
+                    .bind(&id)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| format!("Error deleting orphaned certificacion: {}", e))?;
+                log::info!("Pruned orphaned certificacion {} (deleted on server)", id);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -405,6 +441,7 @@ async fn apply_certificaciones(
 async fn apply_modificaciones(
     pool: &SqlitePool,
     rows: &[SyncModificacionRow],
+    all_server_ids: Option<&[String]>,
 ) -> Result<(), String> {
     for row in rows {
         // Guard: do not overwrite locally-pending modificaciones
@@ -457,6 +494,28 @@ async fn apply_modificaciones(
         .await
         .map_err(|e| format!("Error upserting modificacion: {}", e))?;
     }
+
+    // Prune modificaciones that were hard-deleted on the server.
+    if let Some(ids) = all_server_ids {
+        let server_set: std::collections::HashSet<&str> =
+            ids.iter().map(|s| s.as_str()).collect();
+        let local_synced: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM modificacion WHERE sync_status = 'synced'"
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Error fetching local modificaciones: {}", e))?;
+        for (id,) in local_synced {
+            if !server_set.contains(id.as_str()) {
+                sqlx::query("DELETE FROM modificacion WHERE id = ?")
+                    .bind(&id)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| format!("Error deleting orphaned modificacion: {}", e))?;
+                log::info!("Pruned orphaned modificacion {} (deleted on server)", id);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -464,6 +523,7 @@ async fn apply_modificaciones(
 async fn apply_observaciones(
     pool: &SqlitePool,
     rows: &[SyncObservacionRow],
+    all_server_ids: Option<&[String]>,
 ) -> Result<(), String> {
     for row in rows {
         // Guard: do not overwrite locally-pending observaciones (insert-only, no edit)
@@ -498,6 +558,28 @@ async fn apply_observaciones(
         .execute(pool)
         .await
         .map_err(|e| format!("Error upserting observacion: {}", e))?;
+    }
+
+    // Prune observaciones that were hard-deleted on the server.
+    if let Some(ids) = all_server_ids {
+        let server_set: std::collections::HashSet<&str> =
+            ids.iter().map(|s| s.as_str()).collect();
+        let local_synced: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM observacion_certificacion WHERE sync_status = 'synced'"
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Error fetching local observaciones: {}", e))?;
+        for (id,) in local_synced {
+            if !server_set.contains(id.as_str()) {
+                sqlx::query("DELETE FROM observacion_certificacion WHERE id = ?")
+                    .bind(&id)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| format!("Error deleting orphaned observacion: {}", e))?;
+                log::info!("Pruned orphaned observacion {} (deleted on server)", id);
+            }
+        }
     }
     Ok(())
 }

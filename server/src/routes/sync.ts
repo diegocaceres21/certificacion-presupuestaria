@@ -109,6 +109,12 @@ router.post('/pull', async (req: Request, res: Response) => {
     obsQuery += ' ORDER BY created_at DESC';
     const [observaciones] = await pool.query<RowDataPacket[]>(obsQuery, obsParams);
 
+    // Always fetch the full list of IDs on the server (regardless of last_sync)
+    // so the client can prune local records that have been hard-deleted on the server.
+    const [allCertIds] = await pool.query<RowDataPacket[]>('SELECT id FROM certificacion');
+    const [allModIds] = await pool.query<RowDataPacket[]>('SELECT id FROM modificacion');
+    const [allObsIds] = await pool.query<RowDataPacket[]>('SELECT id FROM observacion_certificacion');
+
     // Convert MySQL tinyint booleans (0/1) to real booleans for Rust serde
     const toBool = (rows: RowDataPacket[], ...fields: string[]) =>
       rows.map((r) => {
@@ -133,6 +139,9 @@ router.post('/pull', async (req: Request, res: Response) => {
       certificaciones,
       modificaciones,
       observaciones,
+      all_certificacion_ids: (allCertIds as RowDataPacket[]).map((r) => r.id),
+      all_modificacion_ids: (allModIds as RowDataPacket[]).map((r) => r.id),
+      all_observacion_ids: (allObsIds as RowDataPacket[]).map((r) => r.id),
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
