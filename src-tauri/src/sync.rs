@@ -425,12 +425,23 @@ async fn apply_certificaciones(
         .map_err(|e| format!("Error fetching local certificaciones: {}", e))?;
         for (id,) in local_synced {
             if !server_set.contains(id.as_str()) {
+                // Delete child rows first to satisfy FK constraints
+                sqlx::query("DELETE FROM observacion_certificacion WHERE id_certificacion = ?")
+                    .bind(&id)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| format!("Error deleting child observaciones for certificacion {}: {}", id, e))?;
+                sqlx::query("DELETE FROM modificacion WHERE id_certificacion = ?")
+                    .bind(&id)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| format!("Error deleting child modificaciones for certificacion {}: {}", id, e))?;
                 sqlx::query("DELETE FROM certificacion WHERE id = ?")
                     .bind(&id)
                     .execute(pool)
                     .await
                     .map_err(|e| format!("Error deleting orphaned certificacion: {}", e))?;
-                log::info!("Pruned orphaned certificacion {} (deleted on server)", id);
+                log::info!("Pruned orphaned certificacion {} and its children (deleted on server)", id);
             }
         }
     }
