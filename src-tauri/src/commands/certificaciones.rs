@@ -39,21 +39,25 @@ pub async fn listar_certificaciones(
 
     let mut params: Vec<String> = Vec::new();
 
-    if let Some(ref id_unidad) = filtros.id_unidad {
-        query.push_str(" AND c.id_unidad = ?");
-        params.push(id_unidad.clone());
+    // Helper: appends an IN clause for a vec of ids
+    fn push_in(query: &mut String, params: &mut Vec<String>, col: &str, ids: &[String]) {
+        if ids.is_empty() { return; }
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        query.push_str(&format!(" AND {} IN ({})", col, placeholders));
+        params.extend_from_slice(ids);
     }
-    if let Some(ref id_cuenta) = filtros.id_cuenta_contable {
-        query.push_str(" AND c.id_cuenta_contable = ?");
-        params.push(id_cuenta.clone());
+
+    if let Some(ref ids) = filtros.id_unidad {
+        push_in(&mut query, &mut params, "c.id_unidad", ids);
     }
-    if let Some(ref id_proyecto) = filtros.id_proyecto {
-        query.push_str(" AND c.id_proyecto = ?");
-        params.push(id_proyecto.clone());
+    if let Some(ref ids) = filtros.id_cuenta_contable {
+        push_in(&mut query, &mut params, "c.id_cuenta_contable", ids);
     }
-    if let Some(ref generado_por) = filtros.generado_por {
-        query.push_str(" AND c.generado_por = ?");
-        params.push(generado_por.clone());
+    if let Some(ref ids) = filtros.id_proyecto {
+        push_in(&mut query, &mut params, "c.id_proyecto", ids);
+    }
+    if let Some(ref ids) = filtros.generado_por {
+        push_in(&mut query, &mut params, "c.generado_por", ids);
     }
     if let Some(ref fecha_desde) = filtros.fecha_desde {
         query.push_str(" AND c.fecha_certificacion >= ?");
@@ -221,27 +225,6 @@ pub async fn editar_certificacion(
     if current.generado_por != claims.sub && claims.rol != "administrador" {
         return Err("Solo el creador o un administrador puede editar esta certificación".to_string());
     }
-
-    // Create modification record
-    let mod_id = Uuid::new_v4().to_string();
-    let monto_antiguo = if data.monto_total.is_some() { Some(current.monto_total.clone()) } else { None };
-    let concepto_antiguo = if data.concepto.is_some() { Some(current.concepto.clone()) } else { None };
-
-    sqlx::query(
-        "INSERT INTO modificacion (id, id_certificacion, modificado_por, monto_antiguo, monto_nuevo, concepto_antiguo, concepto_nuevo, fecha_hora, comentario, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, 'pending')"
-    )
-    .bind(&mod_id)
-    .bind(&id)
-    .bind(&claims.sub)
-    .bind(&monto_antiguo)
-    .bind(&data.monto_total)
-    .bind(&concepto_antiguo)
-    .bind(&data.concepto)
-    .bind(&data.comentario)
-    .execute(pool.inner())
-    .await
-    .map_err(|e| format!("Error creando registro de modificación: {}", e))?;
 
     // Update certification fields
     let new_concepto = data.concepto.unwrap_or(current.concepto);

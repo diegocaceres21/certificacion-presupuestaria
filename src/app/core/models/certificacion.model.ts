@@ -56,10 +56,10 @@ export interface EditarCertificacion {
 }
 
 export interface FiltrosCertificacion {
-  id_unidad?: string;
-  id_cuenta_contable?: string;
-  id_proyecto?: string;
-  generado_por?: string;
+  id_unidad?: string[];
+  id_cuenta_contable?: string[];
+  id_proyecto?: string[];
+  generado_por?: string[];
   fecha_desde?: string;
   fecha_hasta?: string;
   busqueda?: string;

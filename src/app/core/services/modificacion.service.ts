@@ -13,4 +13,18 @@ export class ModificacionService {
       idCertificacion,
     });
   }
+
+  async crear(data: {
+    id_certificacion: string;
+    monto_antiguo?: string | null;
+    monto_nuevo?: string | null;
+    concepto_antiguo?: string | null;
+    concepto_nuevo?: string | null;
+    comentario?: string | null;
+  }): Promise<void> {
+    return invoke<void>('crear_modificacion', {
+      token: this.auth.getToken(),
+      data,
+    });
+  }
 }

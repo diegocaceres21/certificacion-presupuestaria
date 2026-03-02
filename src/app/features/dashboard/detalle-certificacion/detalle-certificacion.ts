@@ -1,7 +1,8 @@
-import { Component, input, output, inject, signal, ChangeDetectionStrategy, OnInit } from '@angular/core';
+import { Component, input, output, inject, signal, ChangeDetectionStrategy, OnInit, DestroyRef } from '@angular/core';
 import { CertificacionDetalle, ObservacionDetalle, ModificacionDetalle } from '../../../core/models';
 import { ObservacionService } from '../../../core/services/observacion.service';
 import { ModificacionService } from '../../../core/services/modificacion.service';
+import { SyncService } from '../../../core/services/sync.service';
 import { PrintCertificacion } from '../../../shared/components/print-certificacion/print-certificacion';
 import { Modal } from '../../../shared/components/modal/modal';
 
@@ -37,11 +38,21 @@ export class DetalleCertificacion implements OnInit {
 
   private readonly obsService = inject(ObservacionService);
   private readonly modService = inject(ModificacionService);
+  private readonly syncService = inject(SyncService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly observaciones = signal<ObservacionDetalle[]>([]);
   protected readonly modificaciones = signal<ModificacionDetalle[]>([]);
 
   async ngOnInit(): Promise<void> {
+    await this.cargarHistorial();
+
+    // Refresh history whenever a background sync brings in cloud changes
+    const syncSub = this.syncService.syncCompleted$.subscribe(() => void this.cargarHistorial());
+    this.destroyRef.onDestroy(() => syncSub.unsubscribe());
+  }
+
+  private async cargarHistorial(): Promise<void> {
     try {
       const [obs, mods] = await Promise.all([
         this.obsService.listar(this.certificacion().id),

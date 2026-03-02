@@ -406,10 +406,10 @@ pub struct EditarCertificacion {
 
 #[derive(Debug, Deserialize, Default)]
 pub struct FiltrosCertificacion {
-    pub id_unidad: Option<String>,
-    pub id_cuenta_contable: Option<String>,
-    pub id_proyecto: Option<String>,
-    pub generado_por: Option<String>,
+    pub id_unidad: Option<Vec<String>>,
+    pub id_cuenta_contable: Option<Vec<String>>,
+    pub id_proyecto: Option<Vec<String>>,
+    pub generado_por: Option<Vec<String>>,
     pub fecha_desde: Option<String>,
     pub fecha_hasta: Option<String>,
     pub busqueda: Option<String>,
@@ -472,6 +472,16 @@ pub struct ObservacionDetalle {
 pub struct CrearObservacion {
     pub id_certificacion: String,
     pub comentario: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NuevoModificacion {
+    pub id_certificacion: String,
+    pub monto_antiguo: Option<String>,
+    pub monto_nuevo: Option<String>,
+    pub concepto_antiguo: Option<String>,
+    pub concepto_nuevo: Option<String>,
+    pub comentario: Option<String>,
 }
 
 // ============================================

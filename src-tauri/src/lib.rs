@@ -97,6 +97,7 @@ pub fn run() {
             certificaciones::eliminar_certificacion,
             // Modificaciones
             modificaciones::listar_modificaciones,
+            modificaciones::crear_modificacion,
             // Observaciones
             observaciones::listar_observaciones,
             observaciones::crear_observacion,
@@ -129,6 +130,7 @@ pub fn run() {
             reportes::obtener_reporte,
             reportes::reporte_detalle_unidad,
             reportes::reporte_detalle_cuenta,
+            reportes::save_file,
             // Sync
             sync_cmd::sync_now,
             sync_cmd::get_sync_status,

@@ -5,8 +5,11 @@
   computed,
   ChangeDetectionStrategy,
   OnInit,
+  DestroyRef,
 } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { debounceTime } from 'rxjs';
+import { invoke } from '@tauri-apps/api/core';
 import { DecimalPipe } from '@angular/common';
 import {
   ReporteCompleto,
@@ -18,7 +21,9 @@ import {
 } from '../../core/models';
 import { ReporteService } from '../../core/services/reporte.service';
 import { ToastService } from '../../core/services/toast.service';
+import { SyncService } from '../../core/services/sync.service';
 import { Combobox, ComboboxOption } from '../../shared/components/combobox/combobox';
+import { Datepicker } from '../../shared/components/datepicker/datepicker';
 
 interface CuentaReporteNode {
   data: ReporteCuentaJerarquico;
@@ -33,7 +38,7 @@ type ModalKind = 'unidad' | 'cuenta' | null;
 @Component({
   selector: 'app-reportes',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, DecimalPipe, Combobox],
+  imports: [ReactiveFormsModule, DecimalPipe, Combobox, Datepicker],
   template: `
     <!-- -- Filters ------------------------------------------- -->
     <div class="card filters-card">
@@ -41,8 +46,7 @@ type ModalKind = 'unidad' | 'cuenta' | null;
         <h2>Reportes de Certificaciones Presupuestarias</h2>
       </div>
       <div class="card-body">
-        <form [formGroup]="filtros" (ngSubmit)="cargar()">
-          <div class="filters-grid">
+        <div class="filters-grid" [formGroup]="filtros">
             <div class="form-group">
               <label for="anio-select">Año</label>
               <app-combobox
@@ -62,25 +66,32 @@ type ModalKind = 'unidad' | 'cuenta' | null;
               />
             </div>
             <div class="form-group">
-              <label for="f-desde">Fecha desde</label>
-              <input id="f-desde" type="date" formControlName="fecha_desde" />
+              <label>Fecha desde</label>
+              <app-datepicker
+                formControlName="fecha_desde"
+                placeholder="Desde"
+                ariaLabel="Fecha desde"
+              />
             </div>
             <div class="form-group">
-              <label for="f-hasta">Fecha hasta</label>
-              <input id="f-hasta" type="date" formControlName="fecha_hasta" />
+              <label>Fecha hasta</label>
+              <app-datepicker
+                formControlName="fecha_hasta"
+                placeholder="Hasta"
+                ariaLabel="Fecha hasta"
+              />
             </div>
             <div class="filter-action">
-              <button type="submit" class="btn btn-primary" [disabled]="loading()">
-                @if (loading()) {
-                  <span class="btn-spinner" aria-hidden="true"></span> Cargando...
-                } @else {
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  Generar
-                }
+              <button type="button" class="btn btn-secondary btn-sm" (click)="limpiarFiltros()">
+                Limpiar filtros
               </button>
+              @if (loading()) {
+                <span class="filter-loading" aria-live="polite" aria-label="Cargando reporte">
+                  <span class="btn-spinner" aria-hidden="true"></span>
+                </span>
+              }
             </div>
           </div>
-        </form>
       </div>
     </div>
 
@@ -168,7 +179,7 @@ type ModalKind = 'unidad' | 'cuenta' | null;
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Excel
             </button>
-            <button class="btn btn-secondary btn-sm" (click)="imprimirTabla('tabla-cuenta', 'Por Cuenta Contable')">
+            <button class="btn btn-secondary btn-sm" (click)="imprimirTablaCuenta()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
               Imprimir
             </button>
@@ -397,8 +408,16 @@ type ModalKind = 'unidad' | 'cuenta' | null;
       align-items: end;
     }
 
-    .filter-action { display: flex; align-items: flex-end }
-    .filter-action .btn { width: 100%; justify-content: center; gap: 0.4rem }
+    .filter-action { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap }
+    .filter-action .btn { justify-content: center; gap: 0.4rem }
+    .filter-loading {
+      display: inline-flex;
+      align-items: center;
+    }
+    .filter-loading .btn-spinner {
+      border-color: var(--color-ucb-primary, #2563eb);
+      border-top-color: transparent;
+    }
 
     .btn-spinner {
       display: inline-block;
@@ -496,6 +515,8 @@ export class Reportes implements OnInit {
   private readonly reporteSvc = inject(ReporteService);
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly syncService = inject(SyncService);
 
   protected readonly reporte = signal<ReporteCompleto | null>(null);
   protected readonly loading = signal(false);
@@ -595,7 +616,18 @@ export class Reportes implements OnInit {
   });
 
   async ngOnInit(): Promise<void> {
+    const sub = this.filtros.valueChanges.pipe(debounceTime(400)).subscribe(() => void this.cargar());
+    this.destroyRef.onDestroy(() => sub.unsubscribe());
+
+    // Silently re-run reports when a background sync brings in cloud changes
+    const syncSub = this.syncService.syncCompleted$.subscribe(() => void this.cargar());
+    this.destroyRef.onDestroy(() => syncSub.unsubscribe());
+
     await this.cargar();
+  }
+
+  protected limpiarFiltros(): void {
+    this.filtros.setValue({ mes: null, anio: null, fecha_desde: '', fecha_hasta: '' });
   }
 
   protected async cargar(): Promise<void> {
@@ -701,8 +733,7 @@ export class Reportes implements OnInit {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Por Unidad');
-      XLSX.writeFile(wb, `reporte_por_unidad_${this.isoDate()}.xlsx`);
-      this.toast.success('Exportado correctamente');
+      await this.saveXlsx(wb, `reporte_por_unidad_${this.isoDate()}.xlsx`);
     } catch { this.toast.error('Error al exportar'); }
   }
 
@@ -719,8 +750,7 @@ export class Reportes implements OnInit {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Por Cuenta');
-      XLSX.writeFile(wb, `reporte_por_cuenta_${this.isoDate()}.xlsx`);
-      this.toast.success('Exportado correctamente');
+      await this.saveXlsx(wb, `reporte_por_cuenta_${this.isoDate()}.xlsx`);
     } catch { this.toast.error('Error al exportar'); }
   }
 
@@ -737,8 +767,7 @@ export class Reportes implements OnInit {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Por Proyecto');
-      XLSX.writeFile(wb, `reporte_por_proyecto_${this.isoDate()}.xlsx`);
-      this.toast.success('Exportado correctamente');
+      await this.saveXlsx(wb, `reporte_por_proyecto_${this.isoDate()}.xlsx`);
     } catch { this.toast.error('Error al exportar'); }
   }
 
@@ -754,8 +783,7 @@ export class Reportes implements OnInit {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Detalle');
-      XLSX.writeFile(wb, `detalle_unidad_${this.isoDate()}.xlsx`);
-      this.toast.success('Exportado correctamente');
+      await this.saveXlsx(wb, `detalle_unidad_${this.isoDate()}.xlsx`);
     } catch { this.toast.error('Error al exportar'); }
   }
 
@@ -771,12 +799,45 @@ export class Reportes implements OnInit {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Detalle');
-      XLSX.writeFile(wb, `detalle_cuenta_${this.isoDate()}.xlsx`);
-      this.toast.success('Exportado correctamente');
+      await this.saveXlsx(wb, `detalle_cuenta_${this.isoDate()}.xlsx`);
     } catch { this.toast.error('Error al exportar'); }
   }
 
   // -- Per-table print ----------------------------------------
+
+  protected imprimirTablaCuenta(): void {
+    const rows = this.flattenTree(this.cuentaTree());
+    const rowsHtml = rows.map(row => {
+      const indent = row.depth * 20;
+      const isBold = row.data.nivel < 5;
+      const bg = row.depth === 0 ? 'background:#f3f4f6;' : '';
+      const weight = isBold ? 'font-weight:600;' : '';
+      return `<tr style="${bg}${weight}">
+        <td style="padding-left:${8 + indent}px">
+          <span style="color:#2563eb;margin-right:4px">${row.data.cuenta_codigo}</span>
+          ${row.data.cuenta_nombre}
+        </td>
+        <td style="text-align:right">${row.aggCertificaciones}</td>
+        <td style="text-align:right">${row.aggMonto.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Por Cuenta Contable</title>
+      <style>
+        body { font-family: sans-serif; font-size: 12px; padding: 1rem }
+        h2 { margin-bottom: 0.5rem }
+        table { width: 100%; border-collapse: collapse }
+        th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left }
+        th { background: #e5e7eb; font-weight: 600 }
+      </style></head><body>
+      <h2>Por Cuenta Contable (Jerárquico)</h2>
+      <table>
+        <thead><tr><th>Código / Cuenta</th><th style="text-align:right">Certificaciones</th><th style="text-align:right">Monto Total (Bs)</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </body></html>`;
+    this.printHtml(html);
+  }
 
   protected imprimirTabla(elementId: string, titulo: string): void {
     const el = document.getElementById(elementId);
@@ -792,13 +853,7 @@ export class Reportes implements OnInit {
         td:last-child, th:last-child { display: none }
       </style></head><body>
       <h2>${titulo}</h2>${el.innerHTML}</body></html>`;
-    const w = window.open('', '_blank', 'width=900,height=600');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
-    w.close();
+    this.printHtml(html);
   }
 
   protected imprimirModal(): void {
@@ -817,16 +872,40 @@ export class Reportes implements OnInit {
         th { background: #f3f4f6; font-weight: 600 }
       </style></head><body>
       <h2>${subtitulo}</h2><p>${titulo}</p>${el.innerHTML}</body></html>`;
-    const w = window.open('', '_blank', 'width=900,height=600');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
-    w.close();
+    this.printHtml(html);
   }
 
   // -- Helpers ------------------------------------------------
+
+  private async saveXlsx(wb: unknown, filename: string): Promise<void> {
+    const XLSX = await import('xlsx');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const b64: string = (XLSX as any).write(wb, { bookType: 'xlsx', type: 'base64' });
+    const saved = await invoke<boolean>('save_file', { filename, data: b64 });
+    if (saved) this.toast.success('Exportado correctamente');
+  }
+
+  private printHtml(html: string): void {
+    const footer = `<div class="print-footer">Generado el ${this.isoDateTime()} desde el sistema de Certificación Presupuestaria</div>`;
+    const footerStyle = `<style>.print-footer{position:fixed;bottom:0;right:0;font-size:9px;color:#9ca3af;padding:4px 8px;font-family:sans-serif;}</style>`;
+    const printHtmlWithFooter = html
+      .replace('</head>', `${footerStyle}</head>`)
+      .replace('</body>', `${footer}</body>`);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) { document.body.removeChild(iframe); return; }
+    doc.open();
+    doc.write(printHtmlWithFooter);
+    doc.close();
+    iframe.addEventListener('load', () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* already removed */ } }, 2000);
+    });
+  }
 
   private flattenTree(nodes: CuentaReporteNode[], result: CuentaReporteNode[] = []): CuentaReporteNode[] {
     for (const n of nodes) {
@@ -839,5 +918,12 @@ export class Reportes implements OnInit {
   private isoDate(): string {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  private isoDateTime(): string {
+    const d = new Date();
+    const date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return `${date} ${time}`;
   }
 }

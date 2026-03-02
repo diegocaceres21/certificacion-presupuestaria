@@ -147,10 +147,10 @@ import { DatePipe, DecimalPipe } from '@angular/common';
                   <td>{{ mod.fecha_hora | date:'dd/MM/yyyy HH:mm' }}</td>
                   <td>{{ mod.modificado_por_nombre }}</td>
                   <td>
-                    @if (mod.monto_antiguo && mod.monto_nuevo) {
+                    @if (mod.monto_antiguo && mod.monto_nuevo && mod.monto_antiguo !== mod.monto_nuevo) {
                       <span>El monto se ha modificado de: Bs. {{ mod.monto_antiguo | number:'1.2-2' }} a Bs. {{ mod.monto_nuevo | number:'1.2-2' }}.</span>
                     }
-                    @if (mod.concepto_antiguo && mod.concepto_nuevo) {
+                    @if (mod.concepto_antiguo && mod.concepto_nuevo && mod.concepto_antiguo !== mod.concepto_nuevo) {
                       <span>Se ha modificado el concepto de: {{ mod.concepto_antiguo }} a {{ mod.concepto_nuevo }}.</span>
                     }
                   </td>

@@ -66,7 +66,7 @@ export interface ComboboxOption {
         </button>
 
         @if (isOpen()) {
-          <div class="combobox-dropdown" role="listbox" [attr.aria-label]="ariaLabel()">
+          <div class="combobox-dropdown" role="listbox" [attr.aria-label]="ariaLabel()" [style]="dropdownStyle()">
             @if (showSearch()) {
               <div class="combobox-search-wrapper">
                 <input
@@ -156,7 +156,7 @@ export interface ComboboxOption {
         </button>
 
         @if (isOpen()) {
-          <div class="combobox-dropdown" role="listbox" [attr.aria-multiselectable]="'true'" [attr.aria-label]="ariaLabel()">
+          <div class="combobox-dropdown" role="listbox" [attr.aria-multiselectable]="'true'" [attr.aria-label]="ariaLabel()" [style]="dropdownStyle()">
             @if (showSearch()) {
               <div class="combobox-search-wrapper">
                 <input
@@ -288,9 +288,6 @@ export interface ComboboxOption {
     /* Dropdown */
     .combobox-dropdown {
       position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      right: 0;
       z-index: 1100;
       background: white;
       border: 1px solid var(--color-ucb-gray-200);
@@ -502,6 +499,7 @@ export class Combobox implements ControlValueAccessor, OnDestroy {
 
   // Internal state
   protected readonly isOpen = signal(false);
+  protected readonly dropdownStyle = signal<Record<string, string>>({});
   protected readonly searchTerm = signal('');
   protected readonly activeIndex = signal(0);
   protected readonly isDisabled = signal(false);
@@ -576,11 +574,27 @@ export class Combobox implements ControlValueAccessor, OnDestroy {
     this.isDisabled.set(disabled);
   }
 
+  private computeDropdownPosition(): void {
+    const el = this.elRef.nativeElement as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const style: Record<string, string> = { left: '0', right: '0' };
+    if (spaceBelow < 300 && rect.top > spaceBelow) {
+      style['bottom'] = 'calc(100% + 4px)';
+      style['top'] = 'auto';
+    } else {
+      style['top'] = 'calc(100% + 4px)';
+      style['bottom'] = 'auto';
+    }
+    this.dropdownStyle.set(style);
+  }
+
   // Public API
   protected toggle(): void {
     if (this.isDisabled()) return;
     this.isOpen.update(v => !v);
     if (this.isOpen()) {
+      this.computeDropdownPosition();
       this.searchTerm.set('');
       this.activeIndex.set(0);
     } else {

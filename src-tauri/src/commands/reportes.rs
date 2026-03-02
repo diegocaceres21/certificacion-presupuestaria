@@ -4,6 +4,34 @@ use tauri::State;
 use crate::auth;
 use crate::models::*;
 
+/// Opens a native Save-As dialog and writes the provided bytes to the chosen path.
+/// `data` is a base64-encoded string of the file content.
+/// Returns `true` if the file was saved, `false` if the user cancelled.
+#[tauri::command]
+pub async fn save_file(filename: String, data: String) -> Result<bool, String> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let bytes = STANDARD
+        .decode(&data)
+        .map_err(|e| format!("Error decodificando base64: {}", e))?;
+
+    let path = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_file_name(&filename)
+            .save_file()
+    })
+    .await
+    .map_err(|e| format!("Error abriendo diálogo: {}", e))?;
+
+    match path {
+        Some(p) => {
+            std::fs::write(&p, &bytes)
+                .map_err(|e| format!("Error al guardar el archivo: {}", e))?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 #[tauri::command]
 pub async fn obtener_reporte(
     pool: State<'_, SqlitePool>,
@@ -18,8 +46,8 @@ pub async fn obtener_reporte(
 
     // Summary
     let resumen_query = format!(
-        "SELECT COUNT(*) as total_certificaciones, CAST(SUM(monto_total) AS TEXT) as monto_total
-         FROM certificacion WHERE deleted_at IS NULL {}",
+        "SELECT COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
+         FROM certificacion c WHERE c.deleted_at IS NULL {}",
         where_clause
     );
     let resumen = sqlx::query_as::<_, ReporteResumen>(&resumen_query)

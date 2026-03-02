@@ -1,4 +1,5 @@
 import { Injectable, signal, computed } from '@angular/core';
+import { Subject } from 'rxjs';
 import { invoke } from '@tauri-apps/api/core';
 import { SyncStatus } from '../models';
 
@@ -19,6 +20,12 @@ export class SyncService {
   readonly isOnline = computed(() => this._status().is_online);
   readonly pendingCount = computed(() => this._status().pending_count);
   readonly lastSync = computed(() => this._status().last_sync);
+
+  /**
+   * Emits once after every successful sync pull.
+   * Components subscribe to silently refresh their data when cloud changes arrive.
+   */
+  readonly syncCompleted$ = new Subject<void>();
 
   /** Start periodic sync (every 5 minutes) and connectivity watcher (every 30s). Call once after login. */
   startPeriodicSync(): void {
@@ -58,6 +65,7 @@ export class SyncService {
       const status = await invoke<SyncStatus>('sync_now');
       this._status.set(status);
       this.wasOnline = status.is_online;
+      this.syncCompleted$.next();
       return status;
     } catch (err) {
       console.warn('Sync failed:', err);

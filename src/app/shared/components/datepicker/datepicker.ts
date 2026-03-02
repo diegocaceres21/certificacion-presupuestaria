@@ -48,7 +48,7 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
       </button>
 
       @if (isOpen()) {
-        <div class="datepicker-panel" role="dialog" aria-modal="true" aria-label="Calendario">
+        <div class="datepicker-panel" role="dialog" aria-modal="true" aria-label="Calendario" [style]="panelStyle()">
           <!-- Header: month/year navigation -->
           <div class="datepicker-header">
             <button type="button" class="datepicker-nav" (click)="prevMonth()" aria-label="Mes anterior">
@@ -168,8 +168,6 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
     /* Panel */
     .datepicker-panel {
       position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
       z-index: 1100;
       background: white;
       border: 1px solid var(--color-ucb-gray-200);
@@ -323,6 +321,7 @@ export class Datepicker implements ControlValueAccessor {
 
   protected readonly isOpen = signal(false);
   protected readonly isDisabled = signal(false);
+  protected readonly panelStyle = signal<Record<string, string>>({});
   protected readonly value = signal<string>(''); // YYYY-MM-DD
   protected readonly viewMonth = signal(new Date().getMonth()); // 0-11
   protected readonly viewYear = signal(new Date().getFullYear());
@@ -435,10 +434,35 @@ export class Datepicker implements ControlValueAccessor {
     this.isOpen.set(false);
   }
 
+  private computePanelPosition(): void {
+    const el = this.elRef.nativeElement as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const style: Record<string, string> = {};
+    // Vertical: open upward if not enough space below
+    if (spaceBelow < 320 && rect.top > spaceBelow) {
+      style['bottom'] = 'calc(100% + 4px)';
+      style['top'] = 'auto';
+    } else {
+      style['top'] = 'calc(100% + 4px)';
+      style['bottom'] = 'auto';
+    }
+    // Horizontal: align right if panel would overflow viewport right edge
+    if (rect.left + 280 > window.innerWidth) {
+      style['right'] = '0';
+      style['left'] = 'auto';
+    } else {
+      style['left'] = '0';
+      style['right'] = 'auto';
+    }
+    this.panelStyle.set(style);
+  }
+
   protected toggle(): void {
     if (this.isDisabled()) return;
     this.isOpen.update(v => !v);
     if (this.isOpen()) {
+      this.computePanelPosition();
       // Navigate to selected month if value exists
       const v = this.value();
       if (v) {

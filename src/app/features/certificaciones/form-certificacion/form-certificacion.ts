@@ -19,13 +19,15 @@ import { UnidadService } from '../../../core/services/unidad.service';
 import { CuentaService } from '../../../core/services/cuenta.service';
 import { ProyectoService } from '../../../core/services/proyecto.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { ModificacionService } from '../../../core/services/modificacion.service';
 import { Combobox, ComboboxOption } from '../../../shared/components/combobox/combobox';
 import { Datepicker } from '../../../shared/components/datepicker/datepicker';
+import { MontoInput } from '../../../shared/components/monto-input/monto-input';
 
 @Component({
   selector: 'app-form-certificacion',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, Combobox, Datepicker],
+  imports: [ReactiveFormsModule, Combobox, Datepicker, MontoInput],
   template: `
     <div class="card" style="max-width: 800px; margin: 0 auto">
       <div class="card-header">
@@ -89,13 +91,8 @@ import { Datepicker } from '../../../shared/components/datepicker/datepicker';
           <!-- Monto -->
           <div class="form-group">
             <label for="monto_total">Importe Total (Bs) *</label>
-            <input
-              id="monto_total"
-              type="number"
+            <app-monto-input
               formControlName="monto_total"
-              step="0.01"
-              min="0.01"
-              placeholder="0.00"
             />
             @if (form.get('monto_total')?.touched && form.get('monto_total')?.hasError('required')) {
               <small class="form-error">El monto es obligatorio.</small>
@@ -120,7 +117,7 @@ import { Datepicker } from '../../../shared/components/datepicker/datepicker';
 
           <!-- Comentario -->
           <div class="form-group">
-            <label for="comentario">Comentario</label>
+            <label for="comentario">Observaciones</label>
             <textarea
               id="comentario"
               formControlName="comentario"
@@ -143,10 +140,85 @@ import { Datepicker } from '../../../shared/components/datepicker/datepicker';
         </form>
       </div>
     </div>
+
+    <!-- Modal: comentario de modificación -->
+    @if (showModifModal()) {
+      <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modif-modal-title">
+        <div class="modal-box">
+          <h3 id="modif-modal-title" class="modal-title">¿Desea agregar un comentario a esta modificación?</h3>
+          <p class="modal-subtitle">El comentario quedará registrado en el historial de modificaciones de esta certificación. Es opcional.</p>
+          <div class="form-group" style="margin-top: 1rem">
+            <label for="modif-comentario">Comentario de modificación</label>
+            <textarea
+              id="modif-comentario"
+              rows="3"
+              [value]="modifComentario()"
+              (input)="modifComentario.set($any($event.target).value)"
+              placeholder="Describa brevemente el motivo de la modificación..."
+            ></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" (click)="showModifModal.set(false)" [disabled]="submitting()">
+              Cancelar
+            </button>
+            <button type="button" class="btn btn-outline" (click)="confirmarActualizar(null)" [disabled]="submitting()">
+              Guardar sin comentario
+            </button>
+            <button type="button" class="btn btn-primary" (click)="confirmarActualizar(modifComentario())" [disabled]="submitting() || !modifComentario().trim()">
+              @if (submitting()) { Guardando... } @else { Guardar con comentario }
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: `
     .form-actions button {
       min-width: 140px;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+
+    .modal-box {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 1.75rem;
+      width: min(520px, 92vw);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 0 0 0.35rem;
+    }
+
+    .modal-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-ucb-gray-500);
+      margin: 0;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1.5px solid var(--color-ucb-primary);
+      color: var(--color-ucb-primary);
     }
   `,
 })
@@ -159,9 +231,12 @@ export class FormCertificacion implements OnInit {
   private readonly cuentaService = inject(CuentaService);
   private readonly proyectoService = inject(ProyectoService);
   private readonly toast = inject(ToastService);
+  private readonly modifService = inject(ModificacionService);
 
   protected readonly isEditing = signal(false);
   protected readonly submitting = signal(false);
+  protected readonly showModifModal = signal(false);
+  protected readonly modifComentario = signal('');
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly cuentas = signal<CuentaContableDetalle[]>([]);
   protected readonly proyectos = signal<Proyecto[]>([]);
@@ -237,36 +312,65 @@ export class FormCertificacion implements OnInit {
   async onSubmit(): Promise<void> {
     if (this.form.invalid) return;
 
+    if (this.isEditing()) {
+      // Show confirmation modal to optionally add a modification comment
+      this.modifComentario.set('');
+      this.showModifModal.set(true);
+      return;
+    }
+
+    // Create mode — save directly
     this.submitting.set(true);
     const val = this.form.getRawValue();
-
     try {
-      if (this.isEditing()) {
-        await this.certService.editar(this.certId, {
-          id_unidad: val.id_unidad,
-          id_cuenta_contable: val.id_cuenta_contable,
-          id_proyecto: val.id_proyecto || null,
-          concepto: val.concepto,
-          monto_total: val.monto_total.toFixed(2),
-          comentario: val.comentario || null,
-        });
-        this.toast.success('Certificación actualizada correctamente');
-      } else {
-        await this.certService.crear({
-          id_unidad: val.id_unidad,
-          id_cuenta_contable: val.id_cuenta_contable,
-          id_proyecto: val.id_proyecto || null,
-          concepto: val.concepto,
-          monto_total: val.monto_total.toFixed(2),
-          comentario: val.comentario || null,
-        });
-        this.toast.success('Certificación creada correctamente');
-      }
+      await this.certService.crear({
+        id_unidad: val.id_unidad,
+        id_cuenta_contable: val.id_cuenta_contable,
+        id_proyecto: val.id_proyecto || null,
+        concepto: val.concepto,
+        monto_total: val.monto_total.toFixed(2),
+        comentario: val.comentario || null,
+      });
+      this.toast.success('Certificación creada correctamente');
       this.router.navigate(['/dashboard']);
     } catch (err) {
       this.toast.error(String(err));
     } finally {
       this.submitting.set(false);
+    }
+  }
+
+  protected async confirmarActualizar(comentario: string | null): Promise<void> {
+    this.submitting.set(true);
+    const val = this.form.getRawValue();
+    try {
+      await this.certService.editar(this.certId, {
+        id_unidad: val.id_unidad,
+        id_cuenta_contable: val.id_cuenta_contable,
+        id_proyecto: val.id_proyecto || null,
+        concepto: val.concepto,
+        monto_total: val.monto_total.toFixed(2),
+        comentario: val.comentario || null,
+      });
+
+      // Register modification record
+      const orig = this.certOriginal;
+      await this.modifService.crear({
+        id_certificacion: this.certId,
+        monto_antiguo: orig ? orig.monto_total : null,
+        monto_nuevo: val.monto_total.toFixed(2),
+        concepto_antiguo: orig ? orig.concepto : null,
+        concepto_nuevo: val.concepto,
+        comentario: comentario?.trim() || null,
+      });
+
+      this.toast.success('Certificación actualizada correctamente');
+      this.router.navigate(['/dashboard']);
+    } catch (err) {
+      this.toast.error(String(err));
+    } finally {
+      this.submitting.set(false);
+      this.showModifModal.set(false);
     }
   }
 

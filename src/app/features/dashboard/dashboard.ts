@@ -1,6 +1,7 @@
-import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit, DestroyRef } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { debounceTime } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { CertificacionService } from '../../core/services/certificacion.service';
 import { UnidadService } from '../../core/services/unidad.service';
@@ -8,7 +9,9 @@ import { CuentaService } from '../../core/services/cuenta.service';
 import { ProyectoService } from '../../core/services/proyecto.service';
 import { UsuarioService } from '../../core/services/usuario.service';
 import { ToastService } from '../../core/services/toast.service';
-import { CertificacionDetalle, FiltrosCertificacion, UnidadConDependencia, CuentaContableDetalle, Proyecto, UsuarioConPerfil } from '../../core/models';
+import { SyncService } from '../../core/services/sync.service';
+import { ModificacionService } from '../../core/services/modificacion.service';
+import { CertificacionDetalle, FiltrosCertificacion, UnidadConDependencia, CuentaContableDetalle, Proyecto, UsuarioConPerfil, ModificacionDetalle } from '../../core/models';
 import { DetalleCertificacion } from './detalle-certificacion/detalle-certificacion';
 import { PrintCertificacion } from '../../shared/components/print-certificacion/print-certificacion';
 import { Combobox, ComboboxOption } from '../../shared/components/combobox/combobox';
@@ -30,6 +33,15 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
     <div class="card mb-4 no-print">
       <div class="card-body">
         <div class="filters-grid" [formGroup]="filterForm">
+          <div class="filter-item filter-search">
+            <label for="f-busqueda">Buscar</label>
+            <input
+              id="f-busqueda"
+              type="search"
+              formControlName="busqueda"
+              placeholder="Nro. certificación o concepto..."
+            />
+          </div>
           <div class="filter-item">
             <label>Unidad Organizacional</label>
             <app-combobox
@@ -86,15 +98,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
               ariaLabel="Fecha hasta"
             />
           </div>
-          <div class="filter-item filter-search">
-            <label for="f-busqueda">Buscar</label>
-            <input
-              id="f-busqueda"
-              type="search"
-              formControlName="busqueda"
-              placeholder="Nro. certificación o concepto..."
-            />
-          </div>
+          
           <div class="filter-item filter-actions">
             <button class="btn btn-secondary btn-sm" (click)="clearFilters()">
               Limpiar filtros
@@ -129,7 +133,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
             </tr>
           </thead>
           <tbody>
-            @for (cert of certificaciones(); track cert.id) {
+            @for (cert of paginatedCerts(); track cert.id) {
               <tr>
                 <td>
                   <span class="badge badge-primary">{{ cert.nro_certificacion }}/{{ cert.anio_certificacion }}</span>
@@ -181,6 +185,42 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
       </div>
     </div>
 
+    <!-- Pagination -->
+    @if (totalPages() > 1) {
+      <div class="pagination no-print">
+        <button
+          class="pagination-btn"
+          [disabled]="currentPage() === 1"
+          (click)="currentPage.set(currentPage() - 1)"
+          aria-label="Página anterior"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        @for (p of pageNumbers(); track $index) {
+          @if (p === '...') {
+            <span class="pagination-ellipsis">…</span>
+          } @else {
+            <button
+              class="pagination-btn"
+              [class.pagination-btn--active]="p === currentPage()"
+              [attr.aria-label]="'Página ' + p"
+              [attr.aria-current]="p === currentPage() ? 'page' : null"
+              (click)="currentPage.set(+p)"
+            >{{ p }}</button>
+          }
+        }
+        <button
+          class="pagination-btn"
+          [disabled]="currentPage() === totalPages()"
+          (click)="currentPage.set(currentPage() + 1)"
+          aria-label="Página siguiente"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <span class="pagination-info">Página {{ currentPage() }} de {{ totalPages() }} &middot; {{ certificaciones().length }} resultados</span>
+      </div>
+    }
+
     <!-- Detail modal -->
     @if (selectedCert()) {
       <app-detalle-certificacion
@@ -192,7 +232,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
     <!-- Print area (hidden on screen, visible only for print from table) -->
     @if (printCert()) {
       <div class="print-area">
-        <app-print-certificacion [certificacion]="printCert()!" [modo]="'impresion'" />
+        <app-print-certificacion [certificacion]="printCert()!" [modificaciones]="printModificaciones()" [modo]="'impresion'" />
       </div>
     }
   `,
@@ -218,6 +258,34 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
       display: flex;
       align-items: flex-end;
     }
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      padding: 1rem 0 0.25rem;
+      flex-wrap: wrap;
+    }
+    .pagination-btn {
+      min-width: 2rem;
+      height: 2rem;
+      padding: 0 0.5rem;
+      border: 1px solid var(--color-ucb-gray-200, #e5e7eb);
+      border-radius: 0.375rem;
+      background: #fff;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-ucb-gray-700, #374151);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pagination-btn:hover:not(:disabled) { background: var(--color-ucb-gray-50, #f9fafb); border-color: var(--color-ucb-gray-400, #9ca3af); }
+    .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination-btn--active { background: var(--color-primary, #2563eb); color: #fff; border-color: var(--color-primary, #2563eb); font-weight: 600; }
+    .pagination-ellipsis { padding: 0 0.25rem; color: var(--color-ucb-gray-400, #9ca3af); }
+    .pagination-info { font-size: 0.8125rem; color: var(--color-ucb-gray-500, #6b7280); margin-left: 0.5rem; }
   `],
 })
 export class Dashboard implements OnInit {
@@ -230,8 +298,11 @@ export class Dashboard implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly syncService = inject(SyncService);
+  private readonly modService = inject(ModificacionService);
 
-  protected readonly certificaciones = signal<CertificacionDetalle[]>([]);
+  protected readonly certificaciones = signal<CertificacionDetalle[]>([]);;
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly cuentas = signal<CuentaContableDetalle[]>([]);
   protected readonly proyectos = signal<Proyecto[]>([]);
@@ -239,15 +310,40 @@ export class Dashboard implements OnInit {
   protected readonly loading = signal(false);
   protected readonly selectedCert = signal<CertificacionDetalle | null>(null);
   protected readonly printCert = signal<CertificacionDetalle | null>(null);
+  protected readonly printModificaciones = signal<ModificacionDetalle[]>([]);
+
+  // Pagination
+  protected readonly currentPage = signal(1);
+  protected readonly pageSize = 20;
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.certificaciones().length / this.pageSize))
+  );
+  protected readonly paginatedCerts = computed(() => {
+    const start = (this.currentPage() - 1) * this.pageSize;
+    return this.certificaciones().slice(start, start + this.pageSize);
+  });
+  protected readonly pageNumbers = computed<(number | '...')[]>(() => {
+    const total = this.totalPages();
+    const cur = this.currentPage();
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: (number | '...')[] = [1];
+    if (cur > 3) pages.push('...');
+    const lo = Math.max(2, cur - 1);
+    const hi = Math.min(total - 1, cur + 1);
+    for (let i = lo; i <= hi; i++) pages.push(i);
+    if (cur < total - 2) pages.push('...');
+    if (total > 1) pages.push(total);
+    return pages;
+  });
 
   protected readonly filterForm = this.fb.group({
-    id_unidad: [''],
-    id_cuenta_contable: [''],
-    id_proyecto: [''],
-    generado_por: [''],
-    fecha_desde: [''],
-    fecha_hasta: [''],
-    busqueda: [''],
+    id_unidad: [[] as (string | number)[]],
+    id_cuenta_contable: [[] as (string | number)[]],
+    id_proyecto: [[] as (string | number)[]],
+    generado_por: [[] as (string | number)[]],
+    fecha_desde: ['' as string],
+    fecha_hasta: ['' as string],
+    busqueda: ['' as string],
   });
 
   protected readonly unidadOptions = computed<ComboboxOption[]>(() =>
@@ -267,8 +363,16 @@ export class Dashboard implements OnInit {
   );
 
   async ngOnInit(): Promise<void> {
-    // Subscribe to filter changes for auto-apply
-    this.filterForm.valueChanges.subscribe(() => this.applyFilters());
+    const sub = this.filterForm.valueChanges.pipe(debounceTime(300)).subscribe(() => {
+      this.currentPage.set(1);
+      void this.applyFilters();
+    });
+    this.destroyRef.onDestroy(() => sub.unsubscribe());
+
+    // Silently refresh certs when a background sync brings in cloud changes
+    const syncSub = this.syncService.syncCompleted$.subscribe(() => void this.applyFilters());
+    this.destroyRef.onDestroy(() => syncSub.unsubscribe());
+
     await this.loadData();
   }
 
@@ -298,14 +402,21 @@ export class Dashboard implements OnInit {
     this.loading.set(true);
     try {
       const val = this.filterForm.getRawValue();
+      const toStrArr = (v: unknown): string[] =>
+        Array.isArray(v) && v.length > 0 ? (v as (string | number)[]).map(String) : [];
+
       const filtrosLimpios: FiltrosCertificacion = {};
-      if (val.id_unidad) filtrosLimpios.id_unidad = val.id_unidad;
-      if (val.id_cuenta_contable) filtrosLimpios.id_cuenta_contable = val.id_cuenta_contable;
-      if (val.id_proyecto) filtrosLimpios.id_proyecto = val.id_proyecto;
-      if (val.generado_por) filtrosLimpios.generado_por = val.generado_por;
+      const unidades = toStrArr(val.id_unidad);
+      if (unidades.length) filtrosLimpios.id_unidad = unidades;
+      const cuentas = toStrArr(val.id_cuenta_contable);
+      if (cuentas.length) filtrosLimpios.id_cuenta_contable = cuentas;
+      const proyectos = toStrArr(val.id_proyecto);
+      if (proyectos.length) filtrosLimpios.id_proyecto = proyectos;
+      const usuarios = toStrArr(val.generado_por);
+      if (usuarios.length) filtrosLimpios.generado_por = usuarios;
       if (val.fecha_desde) filtrosLimpios.fecha_desde = val.fecha_desde;
       if (val.fecha_hasta) filtrosLimpios.fecha_hasta = val.fecha_hasta;
-      if (val.busqueda) filtrosLimpios.busqueda = val.busqueda;
+      if (val.busqueda?.trim()) filtrosLimpios.busqueda = val.busqueda.trim();
 
       const certs = await this.certService.listar(
         Object.keys(filtrosLimpios).length > 0 ? filtrosLimpios : undefined,
@@ -319,8 +430,16 @@ export class Dashboard implements OnInit {
   }
 
   protected clearFilters(): void {
-    this.filterForm.reset();
-    this.applyFilters();
+    this.filterForm.setValue({
+      id_unidad: [],
+      id_cuenta_contable: [],
+      id_proyecto: [],
+      generado_por: [],
+      fecha_desde: '',
+      fecha_hasta: '',
+      busqueda: '',
+    });
+    this.currentPage.set(1);
   }
 
   protected verDetalle(cert: CertificacionDetalle): void {
@@ -329,7 +448,6 @@ export class Dashboard implements OnInit {
 
   protected canEditCert(cert: CertificacionDetalle): boolean {
     if (!this.auth.canEdit()) return false;
-    if (this.auth.isAdmin()) return true;
     return cert.generado_por_id === this.auth.userId();
   }
 
@@ -337,11 +455,20 @@ export class Dashboard implements OnInit {
     this.router.navigate(['/certificaciones', cert.id, 'editar']);
   }
 
-  protected imprimirCert(cert: CertificacionDetalle): void {
+  protected async imprimirCert(cert: CertificacionDetalle): Promise<void> {
+    // Load modification history so it appears on the printed page
+    let mods: ModificacionDetalle[] = [];
+    try {
+      mods = await this.modService.listar(cert.id);
+    } catch {
+      // Non-critical — print without history if fetch fails
+    }
+    this.printModificaciones.set(mods);
     this.printCert.set(cert);
     setTimeout(() => {
       window.print();
       this.printCert.set(null);
+      this.printModificaciones.set([]);
     }, 200);
   }
 

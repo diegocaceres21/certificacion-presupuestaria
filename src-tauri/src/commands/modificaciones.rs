@@ -1,8 +1,11 @@
+use chrono::Local;
 use sqlx::SqlitePool;
 use tauri::State;
+use uuid::Uuid;
 
 use crate::auth;
 use crate::models::*;
+use crate::sync;
 
 #[tauri::command]
 pub async fn listar_modificaciones(
@@ -32,4 +35,41 @@ pub async fn listar_modificaciones(
     .map_err(|e| format!("Error listando modificaciones: {}", e))?;
 
     Ok(results)
+}
+
+#[tauri::command]
+pub async fn crear_modificacion(
+    pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
+    token: String,
+    data: NuevoModificacion,
+) -> Result<(), String> {
+    let claims = auth::validate_token(&token)
+        .map_err(|e| format!("Token inválido: {}", e))?;
+
+    let id = Uuid::new_v4().to_string();
+    let now = Local::now().naive_local().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    sqlx::query(
+        "INSERT INTO modificacion 
+        (id, id_certificacion, modificado_por, monto_antiguo, monto_nuevo, concepto_antiguo, concepto_nuevo, fecha_hora, comentario, sync_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"
+    )
+    .bind(&id)
+    .bind(&data.id_certificacion)
+    .bind(&claims.sub)
+    .bind(&data.monto_antiguo)
+    .bind(&data.monto_nuevo)
+    .bind(&data.concepto_antiguo)
+    .bind(&data.concepto_nuevo)
+    .bind(&now)
+    .bind(&data.comentario)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| format!("Error creando modificación: {}", e))?;
+
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
+
+    Ok(())
 }

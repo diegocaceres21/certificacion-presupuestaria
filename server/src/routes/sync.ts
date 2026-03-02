@@ -91,7 +91,7 @@ router.post('/pull', async (req: Request, res: Response) => {
              FROM modificacion`;
     const modParams: string[] = [];
     if (lastSync) {
-      modQuery += ' WHERE created_at > ?';
+      modQuery += ' WHERE updated_at > ?';
       modParams.push(lastSync);
     }
     modQuery += ' ORDER BY fecha_hora DESC';
