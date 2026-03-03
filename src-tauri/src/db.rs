@@ -1,6 +1,7 @@
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 /// Resolve the local SQLite database path.
 /// Stores it next to the executable in production, or in a local file during dev.
@@ -249,5 +250,81 @@ pub async fn run_column_migrations(pool: &SqlitePool) {
         let _ = sqlx::query(sql).execute(pool).await;
     }
     log::info!("Column migrations applied (existing columns skipped silently)");
+}
+
+/// Seed a default administrator account when the local database has no users at all.
+///
+/// This runs on every startup but is effectively a no-op once any user exists.
+/// It is the bootstrap safety-net for fresh installations where the remote server
+/// cannot be reached on the very first launch.
+///
+/// Default credentials:  usuario = "admin"   password = "admin"
+///
+/// IMPORTANT: the admin should change those credentials (or sync from the server)
+/// as soon as connectivity is available.
+pub async fn seed_initial_admin(pool: &SqlitePool) {
+    // Check whether ANY user already exists — if so, skip seeding entirely.
+    let count: (i64,) = match sqlx::query_as("SELECT COUNT(*) FROM usuario")
+        .fetch_one(pool)
+        .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            log::error!("seed_initial_admin: could not count users: {}", e);
+            return;
+        }
+    };
+
+    if count.0 > 0 {
+        return; // Database already has users — nothing to seed.
+    }
+
+    // Hash the default password with bcrypt.
+    let hashed = match bcrypt::hash("admin", bcrypt::DEFAULT_COST) {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("seed_initial_admin: bcrypt error: {}", e);
+            return;
+        }
+    };
+
+    let user_id = Uuid::new_v4().to_string();
+    let perfil_id = Uuid::new_v4().to_string();
+
+    // Insert the bootstrap user.
+    let insert_user = sqlx::query(
+        "INSERT INTO usuario (id, usuario, password, activo) VALUES (?, 'admin', ?, 1)",
+    )
+    .bind(&user_id)
+    .bind(&hashed)
+    .execute(pool)
+    .await;
+
+    if let Err(e) = insert_user {
+        log::error!("seed_initial_admin: failed to insert usuario: {}", e);
+        return;
+    }
+
+    // Insert the matching profile.
+    let insert_perfil = sqlx::query(
+        "INSERT INTO perfil (id, id_usuario, nombre_completo, cargo, rol) \
+         VALUES (?, ?, 'Administrador', 'Administrador del Sistema', 'administrador')",
+    )
+    .bind(&perfil_id)
+    .bind(&user_id)
+    .execute(pool)
+    .await;
+
+    if let Err(e) = insert_perfil {
+        log::error!("seed_initial_admin: failed to insert perfil: {}", e);
+        return;
+    }
+
+    log::warn!(
+        "⚠️  No users found in the local database. \
+         A default administrator account has been created: \
+         usuario='admin' / password='admin'. \
+         Please change these credentials or sync from the server immediately."
+    );
 }
 

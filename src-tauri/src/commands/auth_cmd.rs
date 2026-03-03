@@ -84,10 +84,16 @@ pub async fn login(
             Ok(response)
         }
         Err(local_err) => {
-            Err(format!(
-                "{}. (El servidor tampoco está disponible en este momento.)",
-                local_err
-            ))
+            // If the server is not configured at all, give a more actionable hint.
+            let server_hint = if config.base_url.is_none() {
+                "El servidor no está configurado en esta instalación. \
+                 Coloque un archivo .env con API_URL junto al ejecutable, \
+                 o contacte al administrador del sistema."
+            } else {
+                "El servidor no está disponible en este momento. \
+                 Verifique su conexión de red e intente de nuevo."
+            };
+            Err(format!("{}. ({})", local_err, server_hint))
         }
     }
 }

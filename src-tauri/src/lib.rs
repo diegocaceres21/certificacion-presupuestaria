@@ -20,7 +20,14 @@ use commands::sync_cmd;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load .env file
+    // Load .env — first try the directory of the installed executable so that
+    // sysadmins can place a .env file next to the .exe without a recompile,
+    // then fall back to the standard CWD search used in development.
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            dotenvy::from_path(exe_dir.join(".env")).ok();
+        }
+    }
     dotenvy::dotenv().ok();
 
     tauri::Builder::default()
@@ -52,6 +59,8 @@ pub fn run() {
                 Ok(pool) => {
                     // Run idempotent column migrations (adds sync_status to catalog tables on existing DBs)
                     tauri::async_runtime::block_on(db::run_column_migrations(&pool));
+                    // Seed a default admin account if no users exist yet (fresh install safety-net)
+                    tauri::async_runtime::block_on(db::seed_initial_admin(&pool));
                     app.manage(pool);
                     log::info!("Local database initialized successfully");
                 }
