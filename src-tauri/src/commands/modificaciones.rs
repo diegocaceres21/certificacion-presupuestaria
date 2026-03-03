@@ -27,9 +27,9 @@ pub async fn listar_modificaciones(
         INNER JOIN usuario u ON m.modificado_por = u.id
         INNER JOIN perfil pf ON pf.id_usuario = u.id
         WHERE m.id_certificacion = ? AND m.deleted_at IS NULL
-        ORDER BY m.fecha_hora DESC"
-    )
-    .bind(&id_certificacion)
+        ORDER BY m.fecha_hora ASC"
+    )  
+    .bind(&id_certificacion) 
     .fetch_all(pool.inner())
     .await
     .map_err(|e| format!("Error listando modificaciones: {}", e))?;

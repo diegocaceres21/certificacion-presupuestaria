@@ -143,19 +143,21 @@ import { DatePipe, DecimalPipe } from '@angular/common';
             </thead>
             <tbody>
               @for (mod of modificaciones(); track mod.id) {
-                <tr>
-                  <td>{{ mod.fecha_hora | date:'dd/MM/yyyy HH:mm' }}</td>
-                  <td>{{ mod.modificado_por_nombre }}</td>
-                  <td>
-                    @if (mod.monto_antiguo && mod.monto_nuevo && mod.monto_antiguo !== mod.monto_nuevo) {
-                      <span>El monto se ha modificado de: Bs. {{ mod.monto_antiguo | number:'1.2-2' }} a Bs. {{ mod.monto_nuevo | number:'1.2-2' }}.</span>
-                    }
-                    @if (mod.concepto_antiguo && mod.concepto_nuevo && mod.concepto_antiguo !== mod.concepto_nuevo) {
-                      <span>Se ha modificado el concepto de: {{ mod.concepto_antiguo }} a {{ mod.concepto_nuevo }}.</span>
-                    }
-                  </td>
-                  <td>{{ mod.comentario ?? '—' }}</td>
-                </tr>
+                @if(existenCambios(mod)) {
+                  <tr>
+                    <td>{{ mod.fecha_hora | date:'dd/MM/yyyy HH:mm' }}</td>
+                    <td>{{ mod.modificado_por_nombre }}</td>
+                    <td>
+                      @if (mod.monto_antiguo && mod.monto_nuevo && mod.monto_antiguo !== mod.monto_nuevo) {
+                        <span>El monto se ha modificado de: Bs. {{ mod.monto_antiguo | number:'1.2-2' }} a Bs. {{ mod.monto_nuevo | number:'1.2-2' }}.</span>
+                      }
+                      @if (mod.concepto_antiguo && mod.concepto_nuevo && mod.concepto_antiguo !== mod.concepto_nuevo) {
+                        <span>Se ha modificado el concepto de: {{ mod.concepto_antiguo }} a {{ mod.concepto_nuevo }}.</span>
+                      }
+                    </td>
+                    <td>{{ mod.comentario ?? '—' }}</td>
+                  </tr>
+                }
               }
             </tbody>
           </table>
@@ -196,7 +198,6 @@ import { DatePipe, DecimalPipe } from '@angular/common';
       align-items: center;
       gap: 0.75rem;
       padding-bottom: 0.6rem;
-      border-bottom: 3px solid #003366;
     }
 
     .cp-logo img {
@@ -246,9 +247,10 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 
     /* ── Título principal ──────────────────────────────────── */
     .cp-title-bar {
-      background: #003366;
-      color: #ffffff;
+      background: #ffffff;
+      color: #000000;
       text-align: center;
+      border: 1px solid #bfc9d8;
       padding: 0.45rem 0.75rem;
       margin-top: 0;
     }
@@ -347,7 +349,6 @@ import { DatePipe, DecimalPipe } from '@angular/common';
       text-transform: uppercase;
       letter-spacing: 0.07em;
       color: #003366;
-      border-bottom: 1.5px solid #003366;
       padding-bottom: 0.2rem;
       margin: 0 0 0.3rem;
     }
@@ -359,8 +360,9 @@ import { DatePipe, DecimalPipe } from '@angular/common';
     }
 
     .cp-table thead tr {
-      background: #003366;
-      color: #ffffff;
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid #dde3ec;
     }
 
     .cp-table th {
@@ -371,7 +373,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 
     .cp-table td {
       padding: 0.28rem 0.5rem;
-      border-bottom: 1px solid #dde3ec;
+      border: 1px solid #dde3ec;
     }
 
     .cp-table tbody tr:nth-child(even) td {
@@ -431,4 +433,11 @@ export class PrintCertificacion {
   readonly observaciones = input<ObservacionDetalle[]>([]);
   readonly modificaciones = input<ModificacionDetalle[]>([]);
   readonly modo = input<'vista' | 'impresion'>('impresion');
+
+  existenCambios(mod: ModificacionDetalle): boolean {
+    return !!(
+      (mod.monto_antiguo && mod.monto_nuevo && mod.monto_antiguo !== mod.monto_nuevo) ||
+      (mod.concepto_antiguo && mod.concepto_nuevo && mod.concepto_antiguo !== mod.concepto_nuevo)
+    );
+  }
 }
