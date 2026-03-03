@@ -45,7 +45,7 @@ pub async fn login(
     // always picked up from the authoritative source.
     match login_remote_classified(&config, &request).await {
         RemoteLoginOutcome::Success(response) => {
-            // Store the JWT so subsequent Tauri commands and sync can use it.
+            // Store the SERVER's JWT so subsequent Tauri API/sync calls can use it.
             if let Ok(mut guard) = auth_token.token.lock() {
                 *guard = Some(response.token.clone());
             }
@@ -58,7 +58,22 @@ pub async fn login(
                 log::warn!("Post-login sync failed (non-fatal): {}", e);
             }
 
-            return Ok(response);
+            // The server's JWT is signed with the SERVER's secret, so the local
+            // `verify_token` command (which only knows the LOCAL secret) would
+            // always fail with InvalidSignature.
+            // Solution: issue a LOCAL JWT for the frontend to store; the server
+            // JWT stays in memory solely for outbound API/sync requests.
+            let local_token = auth::create_token(
+                &response.user.id,
+                &response.user.rol,
+                &response.user.nombre_completo,
+            )
+            .map_err(|e| format!("Error creando token local: {}", e))?;
+
+            return Ok(LoginResponse {
+                token: local_token,
+                user: response.user,
+            });
         }
 
         // Wrong credentials confirmed by the server — fail immediately,
