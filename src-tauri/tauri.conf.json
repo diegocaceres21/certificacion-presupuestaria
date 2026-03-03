@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Certificacion Presupuestaria UCB",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "identifier": "bo.edu.ucb.certificacion-presupuestaria",
   "build": {
     "frontendDist": "../dist/certificacion-presupuestaria/browser",
