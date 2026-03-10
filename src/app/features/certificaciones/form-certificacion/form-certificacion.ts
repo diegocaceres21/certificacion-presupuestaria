@@ -23,11 +23,12 @@ import { ModificacionService } from '../../../core/services/modificacion.service
 import { Combobox, ComboboxOption } from '../../../shared/components/combobox/combobox';
 import { Datepicker } from '../../../shared/components/datepicker/datepicker';
 import { MontoInput } from '../../../shared/components/monto-input/monto-input';
+import { Modal } from '../../../shared/components/modal/modal';
 
 @Component({
   selector: 'app-form-certificacion',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, Combobox, Datepicker, MontoInput],
+  imports: [ReactiveFormsModule, Combobox, Datepicker, MontoInput, Modal],
   template: `
     <div class="card" style="max-width: 800px; margin: 0 auto">
       <div class="card-header">
@@ -66,12 +67,25 @@ import { MontoInput } from '../../../shared/components/monto-input/monto-input';
           <!-- Proyecto (Opcional) -->
           <div class="form-group">
             <label>Proyecto</label>
-            <app-combobox
-              formControlName="id_proyecto"
-              [options]="proyectoOptions()"
-              placeholder="— Sin proyecto —"
-              ariaLabel="Proyecto"
-            />
+            <div style="display: flex; gap: 0.5rem; align-items: flex-start">
+              <div style="flex: 1">
+                <app-combobox
+                  formControlName="id_proyecto"
+                  [options]="proyectoOptions()"
+                  placeholder="— Sin proyecto —"
+                  ariaLabel="Proyecto"
+                  (searchChange)="proyectoSearchTerm.set($event)"
+                />
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm"
+                style="height: 2.375rem; white-space: nowrap; flex-shrink: 0"
+                title="Crear nuevo proyecto"
+                aria-label="Crear nuevo proyecto"
+                (click)="abrirModalProyecto()"
+              >+ Nuevo</button>
+            </div>
           </div>
 
           <!-- Concepto -->
@@ -171,10 +185,52 @@ import { MontoInput } from '../../../shared/components/monto-input/monto-input';
         </div>
       </div>
     }
+
+    <!-- Modal: crear proyecto al vuelo -->
+    @if (showProyectoModal()) {
+      <app-modal
+        [open]="showProyectoModal()"
+        title="Nuevo Proyecto"
+        ariaLabel="Formulario de proyecto"
+        (closed)="showProyectoModal.set(false)"
+      >
+        <form [formGroup]="proyectoForm" (ngSubmit)="guardarProyecto()">
+          <div class="form-group">
+            <label for="proy-nombre">Nombre *</label>
+            <input id="proy-nombre" type="text" formControlName="nombre" placeholder="Nombre del proyecto..." />
+            @if (proyectoForm.get('nombre')?.touched && proyectoForm.get('nombre')?.hasError('required')) {
+              <small class="form-error">El nombre es obligatorio.</small>
+            }
+          </div>
+          <div class="form-group">
+            <label for="proy-descripcion">Descripción</label>
+            <textarea id="proy-descripcion" formControlName="descripcion" rows="2" placeholder="Descripción del proyecto (opcional)..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="proy-pei">PEI</label>
+            <input id="proy-pei" type="text" formControlName="pei" placeholder="Ej: PEI-2024-001" />
+          </div>
+        </form>
+        <div modalFooter class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="showProyectoModal.set(false)" [disabled]="guardandoProyecto()">Cancelar</button>
+          <button type="button" class="btn btn-primary" [disabled]="proyectoForm.invalid || guardandoProyecto()" (click)="guardarProyecto()">
+            @if (guardandoProyecto()) { Guardando... } @else { Guardar Proyecto }
+          </button>
+        </div>
+      </app-modal>
+    }
   `,
   styles: `
     .form-actions button {
       min-width: 140px;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--color-ucb-gray-100);
     }
 
     .modal-backdrop {
@@ -240,6 +296,17 @@ export class FormCertificacion implements OnInit {
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly cuentas = signal<CuentaContableDetalle[]>([]);
   protected readonly proyectos = signal<Proyecto[]>([]);
+
+  // --- Proyecto al vuelo ---
+  protected readonly proyectoSearchTerm = signal('');
+  protected readonly showProyectoModal = signal(false);
+  protected readonly guardandoProyecto = signal(false);
+
+  protected readonly proyectoForm = this.fb.nonNullable.group({
+    nombre: ['', Validators.required],
+    descripcion: [''],
+    pei: [''],
+  });
 
   protected readonly unidadOptions = computed<ComboboxOption[]>(() =>
     this.unidades().map(u => ({ value: u.id, label: `${u.codigo} — ${u.unidad} (${u.dependencia_nombre})` }))
@@ -376,6 +443,36 @@ export class FormCertificacion implements OnInit {
 
   protected cancelar(): void {
     this.router.navigate(['/dashboard']);
+  }
+
+  protected abrirModalProyecto(): void {
+    this.proyectoForm.reset({
+      nombre: this.proyectoSearchTerm().trim(),
+      descripcion: '',
+      pei: '',
+    });
+    this.showProyectoModal.set(true);
+  }
+
+  protected async guardarProyecto(): Promise<void> {
+    if (this.proyectoForm.invalid) return;
+    this.guardandoProyecto.set(true);
+    const val = this.proyectoForm.getRawValue();
+    try {
+      const nuevo = await this.proyectoService.crear({
+        nombre: val.nombre,
+        descripcion: val.descripcion || undefined,
+        pei: val.pei || undefined,
+      });
+      this.proyectos.update(list => [...list, nuevo]);
+      this.form.patchValue({ id_proyecto: nuevo.id });
+      this.showProyectoModal.set(false);
+      this.toast.success(`Proyecto "${nuevo.nombre}" creado y seleccionado`);
+    } catch (err) {
+      this.toast.error('Error al crear el proyecto: ' + String(err));
+    } finally {
+      this.guardandoProyecto.set(false);
+    }
   }
 
   // We need to find IDs from the loaded catalogs based on cert detail data

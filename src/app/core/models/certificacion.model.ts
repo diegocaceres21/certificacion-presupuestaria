@@ -35,6 +35,7 @@ export interface CertificacionDetalle {
   generado_por_cargo: string;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface CrearCertificacion {
@@ -63,4 +64,5 @@ export interface FiltrosCertificacion {
   fecha_desde?: string;
   fecha_hasta?: string;
   busqueda?: string;
+  mostrar_anuladas?: boolean;
 }

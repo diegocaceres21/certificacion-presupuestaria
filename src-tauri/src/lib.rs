@@ -104,6 +104,8 @@ pub fn run() {
             certificaciones::crear_certificacion,
             certificaciones::editar_certificacion,
             certificaciones::eliminar_certificacion,
+            certificaciones::anular_certificacion,
+            certificaciones::reactivar_certificacion,
             // Modificaciones
             modificaciones::listar_modificaciones,
             modificaciones::crear_modificacion,

@@ -2,6 +2,7 @@ import {
   Component,
   ChangeDetectionStrategy,
   input,
+  output,
   signal,
   computed,
   forwardRef,
@@ -497,6 +498,9 @@ export class Combobox implements ControlValueAccessor, OnDestroy {
   /** Max visible tags before collapsing to "N seleccionados" (default 2) */
   readonly maxVisibleTags = input(2);
 
+  /** Emitted whenever the search term changes (single-select mode) */
+  readonly searchChange = output<string>();
+
   // Internal state
   protected readonly isOpen = signal(false);
   protected readonly dropdownStyle = signal<Record<string, string>>({});
@@ -676,6 +680,7 @@ export class Combobox implements ControlValueAccessor, OnDestroy {
     const input = event.target as HTMLInputElement;
     this.searchTerm.set(input.value);
     this.activeIndex.set(0);
+    this.searchChange.emit(input.value);
   }
 
   protected onSearchKeydown(event: KeyboardEvent): void {

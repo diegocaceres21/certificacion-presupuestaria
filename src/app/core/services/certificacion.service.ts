@@ -47,4 +47,18 @@ export class CertificacionService {
       id,
     });
   }
+
+  async anular(id: string): Promise<string> {
+    return invoke<string>('anular_certificacion', {
+      token: this.auth.getToken(),
+      id,
+    });
+  }
+
+  async reactivar(id: string): Promise<string> {
+    return invoke<string>('reactivar_certificacion', {
+      token: this.auth.getToken(),
+      id,
+    });
+  }
 }

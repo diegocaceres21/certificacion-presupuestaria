@@ -27,15 +27,22 @@ pub async fn listar_certificaciones(
             p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,
             c.generado_por as generado_por_id,
             pf.nombre_completo as generado_por_nombre, pf.cargo as generado_por_cargo,
-            c.created_at, c.updated_at
+            c.created_at, c.updated_at, c.deleted_at
         FROM certificacion c
         INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
         LEFT JOIN proyecto p ON c.id_proyecto = p.id
         INNER JOIN usuario u ON c.generado_por = u.id
         INNER JOIN perfil pf ON pf.id_usuario = u.id
-        WHERE c.deleted_at IS NULL"
+        WHERE "
     );
+
+    // Base filter: anuladas or vigentes
+    if filtros.mostrar_anuladas == Some(true) {
+        query.push_str("c.deleted_at IS NOT NULL");
+    } else {
+        query.push_str("c.deleted_at IS NULL");
+    }
 
     let mut params: Vec<String> = Vec::new();
 
@@ -106,7 +113,7 @@ pub async fn obtener_certificacion(
             p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,
             c.generado_por as generado_por_id,
             pf.nombre_completo as generado_por_nombre, pf.cargo as generado_por_cargo,
-            c.created_at, c.updated_at
+            c.created_at, c.updated_at, c.deleted_at
         FROM certificacion c
         INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
@@ -294,7 +301,7 @@ async fn obtener_certificacion_internal(
             p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,
             c.generado_por as generado_por_id,
             pf.nombre_completo as generado_por_nombre, pf.cargo as generado_por_cargo,
-            c.created_at, c.updated_at
+            c.created_at, c.updated_at, c.deleted_at
         FROM certificacion c
         INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
@@ -308,4 +315,84 @@ async fn obtener_certificacion_internal(
     .await
     .map_err(|e| format!("Error: {}", e))?
     .ok_or_else(|| "Certificación no encontrada".to_string())
+}
+
+#[tauri::command]
+pub async fn anular_certificacion(
+    pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
+    token: String,
+    id: String,
+) -> Result<String, String> {
+    let claims = auth::validate_token(&token)
+        .map_err(|e| format!("Token inválido: {}", e))?;
+
+    // Obtain the creator of the certificacion to validate permissions
+    let row = sqlx::query_as::<_, (String,)>(
+        "SELECT generado_por FROM certificacion WHERE id = ? AND deleted_at IS NULL"
+    )
+    .bind(&id)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| format!("Error: {}", e))?;
+
+    let (generado_por,) = row.ok_or_else(|| "Certificación no encontrada o ya anulada".to_string())?;
+
+    if claims.rol != "administrador" && claims.sub != generado_por {
+        return Err("No tiene permisos para anular esta certificación".to_string());
+    }
+
+    sqlx::query(
+        "UPDATE certificacion SET deleted_at = datetime('now'), updated_at = datetime('now'), sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ? AND deleted_at IS NULL"
+    )
+    .bind(&id)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| format!("Error anulando certificación: {}", e))?;
+
+    // Attempt immediate push while online (best-effort)
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
+
+    Ok("Certificación anulada correctamente".to_string())
+}
+
+#[tauri::command]
+pub async fn reactivar_certificacion(
+    pool: State<'_, SqlitePool>,
+    config: State<'_, ApiConfig>,
+    auth_token: State<'_, AuthToken>,
+    token: String,
+    id: String,
+) -> Result<String, String> {
+    let claims = auth::validate_token(&token)
+        .map_err(|e| format!("Token inválido: {}", e))?;
+
+    // Obtain the creator of the certificacion to validate permissions
+    let row = sqlx::query_as::<_, (String,)>(
+        "SELECT generado_por FROM certificacion WHERE id = ? AND deleted_at IS NOT NULL"
+    )
+    .bind(&id)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| format!("Error: {}", e))?;
+
+    let (generado_por,) = row.ok_or_else(|| "Certificación no encontrada o no está anulada".to_string())?;
+
+    if claims.rol != "administrador" && claims.sub != generado_por {
+        return Err("No tiene permisos para reactivar esta certificación".to_string());
+    }
+
+    sqlx::query(
+        "UPDATE certificacion SET deleted_at = NULL, updated_at = datetime('now'), sync_status = 'pending', local_updated_at = datetime('now') WHERE id = ? AND deleted_at IS NOT NULL"
+    )
+    .bind(&id)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| format!("Error reactivando certificación: {}", e))?;
+
+    // Attempt immediate push while online (best-effort)
+    sync::try_push(config.inner(), auth_token.inner(), pool.inner()).await;
+
+    Ok("Certificación reactivada correctamente".to_string())
 }

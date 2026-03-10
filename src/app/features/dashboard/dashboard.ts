@@ -104,6 +104,16 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
               Limpiar filtros
             </button>
           </div>
+          <div class="filter-item filter-anuladas">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                formControlName="mostrar_anuladas"
+                (change)="onMostrarAnuladasChange()"
+              />
+              Mostrar anuladas
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -134,9 +144,12 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
           </thead>
           <tbody>
             @for (cert of paginatedCerts(); track cert.id) {
-              <tr>
+              <tr [class.row-anulada]="cert.deleted_at">
                 <td>
                   <span class="badge badge-primary">{{ cert.nro_certificacion }}/{{ cert.anio_certificacion }}</span>
+                  @if (cert.deleted_at) {
+                    <span class="badge badge-anulada" style="margin-left: 0.25rem">ANULADA</span>
+                  }
                 </td>
                 <td style="white-space: nowrap">{{ formatDate(cert.fecha_certificacion) }}</td>
                 <td style="max-width: 250px" class="text-truncate">{{ cert.concepto }}</td>
@@ -151,7 +164,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                       </svg>
                     </button>
-                    @if (canEditCert(cert)) {
+                    @if (!cert.deleted_at && canEditCert(cert)) {
                       <button class="btn-icon" title="Editar" (click)="editarCert(cert)" aria-label="Editar certificación">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
@@ -159,13 +172,30 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
                         </svg>
                       </button>
                     }
-                    <button class="btn-icon" title="Imprimir" (click)="imprimirCert(cert)" aria-label="Imprimir certificación">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="6 9 6 2 18 2 18 9"/>
-                        <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
-                        <rect x="6" y="14" width="12" height="8"/>
-                      </svg>
-                    </button>
+                    @if (!cert.deleted_at) {
+                      <button class="btn-icon" title="Imprimir" (click)="imprimirCert(cert)" aria-label="Imprimir certificación">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="6 9 6 2 18 2 18 9"/>
+                          <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+                          <rect x="6" y="14" width="12" height="8"/>
+                        </svg>
+                      </button>
+                    }
+                    @if (!cert.deleted_at && canAnularCert(cert)) {
+                      <button class="btn-icon btn-icon--danger" title="Anular certificación" (click)="iniciarAnular(cert)" aria-label="Anular certificación">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                        </svg>
+                      </button>
+                    }
+                    @if (cert.deleted_at && canAnularCert(cert)) {
+                      <button class="btn-icon btn-icon--reactivar" title="Reactivar certificación" (click)="reactivarCert(cert)" aria-label="Reactivar certificación">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="1 4 1 10 7 10"/>
+                          <path d="M3.51 15a9 9 0 1 0 .49-4.93"/>
+                        </svg>
+                      </button>
+                    }
                   </div>
                 </td>
               </tr>
@@ -235,6 +265,55 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
         <app-print-certificacion [certificacion]="printCert()!" [modificaciones]="printModificaciones()" [modo]="'impresion'" />
       </div>
     }
+
+    <!-- Modal: confirmar anulación -->
+    @if (anularTargetCert()) {
+      <div class="anular-backdrop" role="dialog" aria-modal="true" aria-labelledby="anular-modal-title">
+        <div class="anular-box">
+          <div class="anular-header">
+            <h3 id="anular-modal-title">Anular Certificación</h3>
+            <button type="button" class="btn-icon" (click)="cancelarAnular()" aria-label="Cerrar" [disabled]="anulando()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <p style="font-size: 0.875rem; color: var(--color-ucb-gray-600); margin: 0.25rem 0 0.75rem">
+            Está a punto de anular la certificación
+            <strong>{{ anularTargetCert()!.nro_certificacion }}/{{ anularTargetCert()!.anio_certificacion }}</strong>
+            — "<em>{{ anularTargetCert()!.concepto }}</em>".
+            Esta acción es irreversible.
+          </p>
+          <p style="font-size: 0.875rem; margin: 0 0 0.75rem">
+            Para confirmar, escriba <strong style="color: var(--color-danger, #dc2626)">AUTORIZO</strong>:
+          </p>
+          <div class="form-group">
+            <input
+              id="anular-confirm-input"
+              type="text"
+              [value]="anularInput()"
+              (input)="anularInput.set($any($event.target).value)"
+              placeholder="Escriba AUTORIZO..."
+              autocomplete="off"
+              [attr.aria-describedby]="'anular-modal-title'"
+            />
+          </div>
+          <div class="anular-actions">
+            <button type="button" class="btn btn-secondary" (click)="cancelarAnular()" [disabled]="anulando()">
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              [disabled]="anularInput() !== 'AUTORIZO' || anulando()"
+              (click)="confirmarAnular()"
+            >
+              @if (anulando()) { Anulando... } @else { Anular Certificación }
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .page-header {
@@ -286,6 +365,84 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
     .pagination-btn--active { background: var(--color-primary, #2563eb); color: #fff; border-color: var(--color-primary, #2563eb); font-weight: 600; }
     .pagination-ellipsis { padding: 0 0.25rem; color: var(--color-ucb-gray-400, #9ca3af); }
     .pagination-info { font-size: 0.8125rem; color: var(--color-ucb-gray-500, #6b7280); margin-left: 0.5rem; }
+
+    /* Anuladas */
+    .row-anulada td { opacity: 0.6; }
+    .badge-anulada {
+      background: #fee2e2;
+      color: #b91c1c;
+      font-size: 0.65rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.25rem;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .btn-icon--danger { color: #dc2626; }
+    .btn-icon--danger:hover { color: #991b1b; background: #fee2e2; }
+    .btn-icon--reactivar { color: #16a34a; }
+    .btn-icon--reactivar:hover { color: #15803d; background: #dcfce7; }
+    .filter-anuladas {
+      display: flex;
+      align-items: flex-end;
+    }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8125rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle-label input[type="checkbox"] { cursor: pointer; }
+
+    /* Anular confirmation modal */
+    .anular-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .anular-box {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      width: min(480px, 92vw);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+    .anular-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.75rem;
+    }
+    .anular-header h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin: 0;
+      color: #b91c1c;
+    }
+    .anular-actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      margin-top: 1.25rem;
+    }
+    .btn-danger {
+      background: #dc2626;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
   `],
 })
 export class Dashboard implements OnInit {
@@ -302,7 +459,7 @@ export class Dashboard implements OnInit {
   private readonly syncService = inject(SyncService);
   private readonly modService = inject(ModificacionService);
 
-  protected readonly certificaciones = signal<CertificacionDetalle[]>([]);;
+  protected readonly certificaciones = signal<CertificacionDetalle[]>([]);
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly cuentas = signal<CuentaContableDetalle[]>([]);
   protected readonly proyectos = signal<Proyecto[]>([]);
@@ -311,6 +468,12 @@ export class Dashboard implements OnInit {
   protected readonly selectedCert = signal<CertificacionDetalle | null>(null);
   protected readonly printCert = signal<CertificacionDetalle | null>(null);
   protected readonly printModificaciones = signal<ModificacionDetalle[]>([]);
+
+  // Anular
+  protected readonly anularTargetCert = signal<CertificacionDetalle | null>(null);
+  protected readonly anularInput = signal('');
+  protected readonly anulando = signal(false);
+  protected readonly mostrandoAnuladas = signal(false);
 
   // Pagination
   protected readonly currentPage = signal(1);
@@ -344,6 +507,7 @@ export class Dashboard implements OnInit {
     fecha_desde: ['' as string],
     fecha_hasta: ['' as string],
     busqueda: ['' as string],
+    mostrar_anuladas: [false as boolean],
   });
 
   protected readonly unidadOptions = computed<ComboboxOption[]>(() =>
@@ -363,7 +527,8 @@ export class Dashboard implements OnInit {
   );
 
   async ngOnInit(): Promise<void> {
-    const sub = this.filterForm.valueChanges.pipe(debounceTime(300)).subscribe(() => {
+    const sub = this.filterForm.valueChanges.pipe(debounceTime(300)).subscribe((val) => {
+      this.mostrandoAnuladas.set(!!val.mostrar_anuladas);
       this.currentPage.set(1);
       void this.applyFilters();
     });
@@ -405,7 +570,9 @@ export class Dashboard implements OnInit {
       const toStrArr = (v: unknown): string[] =>
         Array.isArray(v) && v.length > 0 ? (v as (string | number)[]).map(String) : [];
 
-      const filtrosLimpios: FiltrosCertificacion = {};
+      const filtrosLimpios: FiltrosCertificacion = {
+        mostrar_anuladas: val.mostrar_anuladas ?? false,
+      };
       const unidades = toStrArr(val.id_unidad);
       if (unidades.length) filtrosLimpios.id_unidad = unidades;
       const cuentas = toStrArr(val.id_cuenta_contable);
@@ -418,9 +585,7 @@ export class Dashboard implements OnInit {
       if (val.fecha_hasta) filtrosLimpios.fecha_hasta = val.fecha_hasta;
       if (val.busqueda?.trim()) filtrosLimpios.busqueda = val.busqueda.trim();
 
-      const certs = await this.certService.listar(
-        Object.keys(filtrosLimpios).length > 0 ? filtrosLimpios : undefined,
-      );
+      const certs = await this.certService.listar(filtrosLimpios);
       this.certificaciones.set(certs);
     } catch (error) {
       this.toast.error('Error filtrando: ' + error);
@@ -438,6 +603,7 @@ export class Dashboard implements OnInit {
       fecha_desde: '',
       fecha_hasta: '',
       busqueda: '',
+      mostrar_anuladas: false,
     });
     this.currentPage.set(1);
   }
@@ -449,6 +615,53 @@ export class Dashboard implements OnInit {
   protected canEditCert(cert: CertificacionDetalle): boolean {
     if (!this.auth.canEdit()) return false;
     return cert.generado_por_id === this.auth.userId();
+  }
+
+  protected canAnularCert(cert: CertificacionDetalle): boolean {
+    return this.auth.isAdmin() || cert.generado_por_id === this.auth.userId();
+  }
+
+  protected iniciarAnular(cert: CertificacionDetalle): void {
+    this.anularTargetCert.set(cert);
+    this.anularInput.set('');
+  }
+
+  protected cancelarAnular(): void {
+    this.anularTargetCert.set(null);
+    this.anularInput.set('');
+  }
+
+  protected async confirmarAnular(): Promise<void> {
+    if (this.anularInput() !== 'AUTORIZO') return;
+    const cert = this.anularTargetCert();
+    if (!cert) return;
+    this.anulando.set(true);
+    try {
+      await this.certService.anular(cert.id);
+      this.toast.success(`Certificación ${cert.nro_certificacion}/${cert.anio_certificacion} anulada correctamente`);
+      this.anularTargetCert.set(null);
+      this.anularInput.set('');
+      await this.applyFilters();
+    } catch (err) {
+      this.toast.error('Error al anular: ' + String(err));
+    } finally {
+      this.anulando.set(false);
+    }
+  }
+
+  protected async reactivarCert(cert: CertificacionDetalle): Promise<void> {
+    try {
+      await this.certService.reactivar(cert.id);
+      this.toast.success(`Certificación ${cert.nro_certificacion}/${cert.anio_certificacion} reactivada correctamente`);
+      await this.applyFilters();
+    } catch (err) {
+      this.toast.error('Error al reactivar: ' + String(err));
+    }
+  }
+
+  protected onMostrarAnuladasChange(): void {
+    // Immediately update the signal for template (before debounce fires)
+    this.mostrandoAnuladas.set(!!this.filterForm.get('mostrar_anuladas')?.value);
   }
 
   protected editarCert(cert: CertificacionDetalle): void {

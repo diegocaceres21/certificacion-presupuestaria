@@ -382,6 +382,8 @@ pub struct CertificacionDetalle {
     pub generado_por_cargo: String,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    #[sqlx(default)]
+    pub deleted_at: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -413,6 +415,7 @@ pub struct FiltrosCertificacion {
     pub fecha_desde: Option<String>,
     pub fecha_hasta: Option<String>,
     pub busqueda: Option<String>,
+    pub mostrar_anuladas: Option<bool>,
 }
 
 // ============================================
