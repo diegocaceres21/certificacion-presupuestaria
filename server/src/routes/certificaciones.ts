@@ -6,6 +6,107 @@ import crypto from 'crypto';
 const router = Router();
 router.use(authMiddleware);
 
+type DetalleInput = { id_cuenta_contable: string; monto: string | number };
+
+function codigoSuffix(codigo: string): string {
+  return codigo.length <= 3 ? codigo : codigo.slice(-3);
+}
+
+function parseMonto(value: string | number): number {
+  const num = Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(num)) {
+    throw new Error('Monto inválido');
+  }
+  return num;
+}
+
+async function resolveDetalles(
+  pool: ReturnType<typeof getPool>,
+  baseCuentaId: string,
+  detallesInput: DetalleInput[] | undefined,
+  montoTotal: string | number,
+): Promise<DetalleInput[]> {
+  const detalles = (detallesInput && detallesInput.length > 0)
+    ? detallesInput
+    : [{ id_cuenta_contable: baseCuentaId, monto: montoTotal }];
+
+  if (!detalles.some((d) => d.id_cuenta_contable === baseCuentaId)) {
+    throw new Error('La cuenta principal debe estar incluida en el detalle');
+  }
+
+  const ids = Array.from(new Set(detalles.map((d) => d.id_cuenta_contable)));
+  const placeholders = ids.map(() => '?').join(', ');
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, codigo, nivel FROM cuenta_contable WHERE id IN (${placeholders})`,
+    ids
+  );
+
+  const map = new Map<string, { codigo: string; nivel: number }>();
+  for (const row of rows) {
+    map.set(row.id, { codigo: row.codigo, nivel: row.nivel });
+  }
+
+  const base = map.get(baseCuentaId);
+  if (!base) {
+    throw new Error('Cuenta principal no encontrada');
+  }
+
+  const baseEs511 = base.codigo.startsWith('511') && base.nivel === 5;
+  if (!baseEs511) {
+    if (detalles.length !== 1 || detalles[0].id_cuenta_contable !== baseCuentaId) {
+      throw new Error('Solo se permite una cuenta cuando la cuenta principal no es 511');
+    }
+  }
+
+  const suffix = codigoSuffix(base.codigo);
+  const seen = new Set<string>();
+  let suma = 0;
+  for (const det of detalles) {
+    if (seen.has(det.id_cuenta_contable)) {
+      throw new Error('No puede repetir la misma cuenta en el detalle');
+    }
+    seen.add(det.id_cuenta_contable);
+
+    const cuenta = map.get(det.id_cuenta_contable);
+    if (!cuenta) {
+      throw new Error('Cuenta del detalle no encontrada');
+    }
+    if (baseEs511) {
+      if (cuenta.nivel !== 5 || !cuenta.codigo.startsWith('511') || codigoSuffix(cuenta.codigo) !== suffix) {
+        throw new Error('Las cuentas del detalle deben ser nivel 5, comenzar con 511 y tener la misma terminación');
+      }
+    }
+
+    const monto = parseMonto(det.monto);
+    if (monto <= 0) {
+      throw new Error('El monto por cuenta debe ser mayor a 0');
+    }
+    suma += monto;
+  }
+
+  const total = parseMonto(montoTotal);
+  if (Math.abs(suma - total) > 0.01) {
+    throw new Error('La suma del detalle debe coincidir con el monto total');
+  }
+
+  return detalles;
+}
+
+async function replaceDetalles(
+  pool: ReturnType<typeof getPool>,
+  certId: string,
+  detalles: DetalleInput[],
+): Promise<void> {
+  await pool.query('DELETE FROM certificacion_cuenta_detalle WHERE id_certificacion = ?', [certId]);
+  for (const det of detalles) {
+    await pool.query(
+      `INSERT INTO certificacion_cuenta_detalle (id, id_certificacion, id_cuenta_contable, monto)
+       VALUES (UUID(), ?, ?, ?)`,
+      [certId, det.id_cuenta_contable, det.monto]
+    );
+  }
+}
+
 const DETALLE_SELECT = `
   SELECT
     c.id, c.nro_certificacion, c.anio_certificacion,
@@ -15,7 +116,8 @@ const DETALLE_SELECT = `
     p.nombre as proyecto_nombre, p.descripcion as proyecto_descripcion, p.pei as proyecto_pei,
     c.generado_por as generado_por_id,
     pf.nombre_completo as generado_por_nombre, pf.cargo as generado_por_cargo,
-    c.created_at, c.updated_at
+    c.created_at, c.updated_at,
+    COALESCE((SELECT COUNT(*) FROM certificacion_cuenta_detalle d WHERE d.id_certificacion = c.id), 1) as detalle_count
   FROM certificacion c
   INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
   INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
@@ -23,13 +125,34 @@ const DETALLE_SELECT = `
   INNER JOIN usuario u ON c.generado_por = u.id
   INNER JOIN perfil pf ON pf.id_usuario = u.id`;
 
-async function obtenerCertificacionInternal(id: string): Promise<RowDataPacket | null> {
+async function obtenerCertificacionInternal(id: string) {
   const pool = getPool();
-  const [rows] = await pool.query<RowDataPacket[]>(
+
+  const [rows]: any = await pool.query(
     `${DETALLE_SELECT} WHERE c.id = ? AND c.deleted_at IS NULL`,
     [id]
   );
-  return rows[0] || null;
+
+  if (!rows.length) return null;
+
+  const [detRows]: any = await pool.query(
+    `SELECT d.id_cuenta_contable,
+            cc.codigo as cuenta_codigo,
+            cc.cuenta as cuenta_nombre,
+            CAST(d.monto AS CHAR) as monto
+     FROM certificacion_cuenta_detalle d
+     INNER JOIN cuenta_contable cc 
+       ON d.id_cuenta_contable = cc.id
+     WHERE d.id_certificacion = ?
+     ORDER BY cc.codigo`,
+    [id]
+  );
+  console.log(detRows)
+
+  return {
+    ...JSON.parse(JSON.stringify(rows[0])),
+    detalles: detRows ?? []
+  };
 }
 
 // GET /api/certificaciones
@@ -44,7 +167,7 @@ router.get('/', async (req: Request, res: Response) => {
       params.push(req.query.id_unidad as string);
     }
     if (req.query.id_cuenta_contable) {
-      query += ' AND c.id_cuenta_contable = ?';
+      query += ' AND EXISTS (SELECT 1 FROM certificacion_cuenta_detalle d WHERE d.id_certificacion = c.id AND d.id_cuenta_contable = ?)';
       params.push(req.query.id_cuenta_contable as string);
     }
     if (req.query.id_proyecto) {
@@ -95,7 +218,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/certificaciones
 router.post('/', requireRole('administrador', 'encargado'), async (req: Request, res: Response) => {
   try {
-    const { id_unidad, id_cuenta_contable, id_proyecto, concepto, monto_total, comentario } = req.body;
+    const { id_unidad, id_cuenta_contable, id_proyecto, concepto, monto_total, comentario, detalles } = req.body;
     const userId = req.claims!.sub;
     const pool = getPool();
 
@@ -110,11 +233,26 @@ router.post('/', requireRole('administrador', 'encargado'), async (req: Request,
     const id = req.body.id || crypto.randomUUID();
     const fecha = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
+    let detallesFinal: DetalleInput[];
+    try {
+      detallesFinal = await resolveDetalles(
+        pool,
+        id_cuenta_contable,
+        Array.isArray(detalles) ? detalles : undefined,
+        monto_total
+      );
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+
     await pool.query(
       `INSERT INTO certificacion (id, id_unidad, id_cuenta_contable, id_proyecto, generado_por, concepto, nro_certificacion, anio_certificacion, fecha_certificacion, monto_total, comentario)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, id_unidad, id_cuenta_contable, id_proyecto || null, userId, concepto, nro, anioActual, fecha, monto_total, comentario || null]
     );
+
+    await replaceDetalles(pool, id, detallesFinal);
 
     // If there's a comment, create observation
     if (comentario && comentario.trim()) {
@@ -183,10 +321,25 @@ router.put('/:id', requireRole('administrador', 'encargado'), async (req: Reques
     const newProyecto = req.body.id_proyecto !== undefined ? req.body.id_proyecto : current.id_proyecto;
     const newComentario = req.body.comentario !== undefined ? req.body.comentario : current.comentario;
 
+    let detallesFinal: DetalleInput[];
+    try {
+      detallesFinal = await resolveDetalles(
+        pool,
+        newCuenta,
+        Array.isArray(req.body.detalles) ? req.body.detalles : undefined,
+        newMonto
+      );
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+
     await pool.query(
       'UPDATE certificacion SET id_unidad = ?, id_cuenta_contable = ?, id_proyecto = ?, concepto = ?, monto_total = ?, comentario = ? WHERE id = ?',
       [newUnidad, newCuenta, newProyecto, newConcepto, newMonto, newComentario, id]
     );
+
+    await replaceDetalles(pool, id, detallesFinal);
 
     const cert = await obtenerCertificacionInternal(id as string);
     res.json(cert);

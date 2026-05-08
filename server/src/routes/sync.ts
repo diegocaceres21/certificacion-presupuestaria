@@ -77,6 +77,23 @@ router.post('/pull', async (req: Request, res: Response) => {
     certQuery += ' ORDER BY anio_certificacion DESC, nro_certificacion DESC';
     const [certificaciones] = await pool.query<RowDataPacket[]>(certQuery, certParams);
 
+    const certIds = (certificaciones as RowDataPacket[]).map((c) => c.id);
+    const detallesMap = new Map<string, Array<{ id_cuenta_contable: string; monto: string }>>();
+    if (certIds.length > 0) {
+      const placeholders = certIds.map(() => '?').join(', ');
+      const [detallesRows] = await pool.query<RowDataPacket[]>(
+        `SELECT d.id_certificacion, d.id_cuenta_contable, CAST(d.monto AS CHAR) as monto
+         FROM certificacion_cuenta_detalle d
+         WHERE d.id_certificacion IN (${placeholders})`,
+        certIds
+      );
+      for (const row of detallesRows as RowDataPacket[]) {
+        const list = detallesMap.get(row.id_certificacion) ?? [];
+        list.push({ id_cuenta_contable: String(row.id_cuenta_contable), monto: String(row.monto) });
+        detallesMap.set(row.id_certificacion, list);
+      }
+    }
+
     // Modificaciones — incremental
     // CAST decimal fields to CHAR for Rust string compatibility
     let modQuery = `SELECT id, id_certificacion, modificado_por,
@@ -136,7 +153,10 @@ router.post('/pull', async (req: Request, res: Response) => {
         usuarios: toBool(usuarios as RowDataPacket[], 'activo'),
         perfiles,
       },
-      certificaciones,
+      certificaciones: (certificaciones as RowDataPacket[]).map((c) => ({
+        ...c,
+        detalles: detallesMap.get(c.id) ?? [],
+      })),
       modificaciones,
       observaciones,
       all_certificacion_ids: (allCertIds as RowDataPacket[]).map((r) => r.id),
@@ -172,6 +192,24 @@ router.post('/push', async (req: Request, res: Response) => {
     const accepted: string[] = [];
     const conflicts: Array<{ id: string; table_name: string; server_version: any; message: string }> = [];
 
+    const normalizeDetalles = (row: any) => {
+      const detalles = Array.isArray(row.detalles) && row.detalles.length > 0
+        ? row.detalles
+        : [{ id_cuenta_contable: row.id_cuenta_contable, monto: row.monto_total }];
+      return detalles;
+    };
+
+    const replaceDetalles = async (certId: string, detalles: Array<{ id_cuenta_contable: string; monto: string }>) => {
+      await pool.query('DELETE FROM certificacion_cuenta_detalle WHERE id_certificacion = ?', [certId]);
+      for (const det of detalles) {
+        await pool.query(
+          `INSERT INTO certificacion_cuenta_detalle (id, id_certificacion, id_cuenta_contable, monto)
+           VALUES (UUID(), ?, ?, ?)`,
+          [certId, det.id_cuenta_contable, det.monto]
+        );
+      }
+    };
+
     // Process certificaciones
     const certs = req.body.certificaciones || [];
     for (const row of certs) {
@@ -189,6 +227,7 @@ router.post('/push', async (req: Request, res: Response) => {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [row.id, row.id_unidad, row.id_cuenta_contable, row.id_proyecto || null, row.generado_por, row.concepto, row.nro_certificacion, row.anio_certificacion, row.fecha_certificacion, row.monto_total, row.comentario || null, row.created_at, row.deleted_at || null]
           );
+          await replaceDetalles(row.id, normalizeDetalles(row));
           accepted.push(row.id);
         } else {
           // Conflict detection: compare server's current updated_at against
@@ -228,6 +267,7 @@ router.post('/push', async (req: Request, res: Response) => {
                 'UPDATE certificacion SET id_unidad = ?, id_cuenta_contable = ?, id_proyecto = ?, concepto = ?, monto_total = ?, comentario = ? WHERE id = ?',
                 [row.id_unidad, row.id_cuenta_contable, row.id_proyecto || null, row.concepto, row.monto_total, row.comentario || null, row.id]
               );
+              await replaceDetalles(row.id, normalizeDetalles(row));
             }
             accepted.push(row.id);
           }

@@ -154,7 +154,14 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
                 <td style="white-space: nowrap">{{ formatDate(cert.fecha_certificacion) }}</td>
                 <td style="max-width: 250px" class="text-truncate">{{ cert.concepto }}</td>
                 <td>{{ cert.unidad_nombre }}</td>
-                <td>{{ cert.cuenta_nombre }}</td>
+                <td>
+                  <div style="display: inline-flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                    <span>{{ cert.cuenta_nombre }}</span>
+                    @if ((cert.detalle_count ?? 1) > 1) {
+                      <span class="badge badge-info">{{ cert.detalle_count }} cuentas</span>
+                    }
+                  </div>
+                </td>
                 <td style="text-align: right; font-weight: 600">{{ formatMoney(cert.monto_total) }}</td>
                 <td>{{ cert.generado_por_nombre }}</td>
                 <td>
@@ -371,6 +378,15 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
     .badge-anulada {
       background: #fee2e2;
       color: #b91c1c;
+      font-size: 0.65rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.25rem;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .badge-info {
+      background: #e0f2fe;
+      color: #0c4a6e;
       font-size: 0.65rem;
       padding: 0.1rem 0.35rem;
       border-radius: 0.25rem;
@@ -608,8 +624,13 @@ export class Dashboard implements OnInit {
     this.currentPage.set(1);
   }
 
-  protected verDetalle(cert: CertificacionDetalle): void {
-    this.selectedCert.set(cert);
+  protected async verDetalle(cert: CertificacionDetalle): Promise<void> {
+    try {
+      const full = await this.certService.obtener(cert.id);
+      this.selectedCert.set(full);
+    } catch {
+      this.selectedCert.set(cert);
+    }
   }
 
   protected canEditCert(cert: CertificacionDetalle): boolean {
@@ -669,6 +690,12 @@ export class Dashboard implements OnInit {
   }
 
   protected async imprimirCert(cert: CertificacionDetalle): Promise<void> {
+    let full = cert;
+    try {
+      full = await this.certService.obtener(cert.id);
+    } catch {
+      // Non-critical — print with cached data if fetch fails
+    }
     // Load modification history so it appears on the printed page
     let mods: ModificacionDetalle[] = [];
     try {
@@ -677,7 +704,7 @@ export class Dashboard implements OnInit {
       // Non-critical — print without history if fetch fails
     }
     this.printModificaciones.set(mods);
-    this.printCert.set(cert);
+    this.printCert.set(full);
     setTimeout(() => {
       window.print();
       this.printCert.set(null);

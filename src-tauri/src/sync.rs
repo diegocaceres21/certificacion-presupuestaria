@@ -409,6 +409,8 @@ async fn apply_certificaciones(
         .execute(pool)
         .await
         .map_err(|e| format!("Error upserting certificacion: {}", e))?;
+
+        replace_certificacion_detalles_from_sync(pool, row).await?;
     }
 
     // Prune certificaciones that were hard-deleted on the server.
@@ -612,13 +614,16 @@ async fn push_pending_internal(
         .await
         .map_err(|e| format!("Error fetching pending certificaciones: {}", e))?;
 
-    let certificaciones: Vec<SyncCertificacionRow> = cert_rows.into_iter().map(|r| SyncCertificacionRow {
+    let mut certificaciones: Vec<SyncCertificacionRow> = cert_rows.into_iter().map(|r| SyncCertificacionRow {
         id: r.0, id_unidad: r.1, id_cuenta_contable: r.2, id_proyecto: r.3,
         generado_por: r.4, concepto: r.5, nro_certificacion: r.6,
         anio_certificacion: r.7, fecha_certificacion: r.8, monto_total: r.9,
         comentario: r.10, created_at: r.11, updated_at: Some(r.12), deleted_at: r.13,
         server_updated_at: r.14,
+        detalles: None,
     }).collect();
+
+    attach_detalles_to_certificaciones(pool, &mut certificaciones).await?;
 
     // Gather pending modificaciones
     let mod_rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, String, String, Option<String>)> =
@@ -818,6 +823,82 @@ async fn push_pending_internal(
     }
 
     log::info!("Push completed. {} accepted, {} conflicts", push_resp.accepted.len(), push_resp.conflicts.len());
+    Ok(())
+}
+
+async fn replace_certificacion_detalles_from_sync(
+    pool: &SqlitePool,
+    row: &SyncCertificacionRow,
+) -> Result<(), String> {
+    let detalles = match &row.detalles {
+        Some(d) if !d.is_empty() => d.clone(),
+        _ => vec![SyncCertificacionDetalleRow {
+            id_cuenta_contable: row.id_cuenta_contable.clone(),
+            monto: row.monto_total.clone(),
+        }],
+    };
+
+    sqlx::query("DELETE FROM certificacion_cuenta_detalle WHERE id_certificacion = ?")
+        .bind(&row.id)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Error limpiando detalle de certificación: {}", e))?;
+
+    for det in detalles {
+        let det_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO certificacion_cuenta_detalle (id, id_certificacion, id_cuenta_contable, monto, created_at, updated_at)
+             VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
+        )
+        .bind(&det_id)
+        .bind(&row.id)
+        .bind(&det.id_cuenta_contable)
+        .bind(&det.monto)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Error insertando detalle de certificación: {}", e))?;
+    }
+
+    Ok(())
+}
+
+async fn attach_detalles_to_certificaciones(
+    pool: &SqlitePool,
+    certificaciones: &mut [SyncCertificacionRow],
+) -> Result<(), String> {
+    if certificaciones.is_empty() {
+        return Ok(());
+    }
+
+    let ids: Vec<String> = certificaciones.iter().map(|c| c.id.clone()).collect();
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let query = format!(
+        "SELECT id_certificacion, id_cuenta_contable, monto FROM certificacion_cuenta_detalle WHERE id_certificacion IN ({})",
+        placeholders
+    );
+
+    let mut q = sqlx::query_as::<_, (String, String, String)>(&query);
+    for id in &ids {
+        q = q.bind(id);
+    }
+    let rows = q
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Error cargando detalles de certificación: {}", e))?;
+
+    let mut map: std::collections::HashMap<String, Vec<SyncCertificacionDetalleRow>> = std::collections::HashMap::new();
+    for (id_certificacion, id_cuenta_contable, monto) in rows {
+        map.entry(id_certificacion)
+            .or_default()
+            .push(SyncCertificacionDetalleRow { id_cuenta_contable, monto });
+    }
+
+    for cert in certificaciones {
+        if let Some(det) = map.get(&cert.id) {
+            cert.detalles = Some(det.clone());
+        }
+    }
+
     Ok(())
 }
 

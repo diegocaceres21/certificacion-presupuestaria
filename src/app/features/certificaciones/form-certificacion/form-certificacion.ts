@@ -5,14 +5,17 @@ import {
   computed,
   ChangeDetectionStrategy,
   OnInit,
+  DestroyRef,
 } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute } from '@angular/router';
 import {
   UnidadConDependencia,
   CuentaContableDetalle,
   Proyecto,
   CertificacionDetalle,
+  CertificacionCuentaDetalleInput,
 } from '../../../core/models';
 import { CertificacionService } from '../../../core/services/certificacion.service';
 import { UnidadService } from '../../../core/services/unidad.service';
@@ -63,6 +66,49 @@ import { Modal } from '../../../shared/components/modal/modal';
               <small class="form-error">La cuenta contable es obligatoria.</small>
             }
           </div>
+
+          @if (multiCuentaEnabled()) {
+            <div class="form-group" formArrayName="detalles">
+              <label>Distribución por Cuenta *</label>
+              <p class="form-hint">Seleccione una o varias cuentas 511 con la misma terminación y asigne el monto correspondiente.</p>
+
+              <div class="detalle-list">
+                @for (detalle of detalleControls(); track detalle; let i = $index) {
+                  <div class="detalle-row" [formGroupName]="i">
+                    <div class="detalle-col detalle-col--cuenta">
+                      <app-combobox
+                        formControlName="id_cuenta_contable"
+                        [options]="detalleCuentaOptions(i)"
+                        placeholder="— Cuenta 511 —"
+                        ariaLabel="Cuenta detalle"
+                      />
+                    </div>
+                    <div class="detalle-col detalle-col--monto">
+                      <app-monto-input formControlName="monto" />
+                    </div>
+                    <div class="detalle-col detalle-col--actions">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline"
+                        (click)="removeDetalle(i)"
+                        [disabled]="detalleControls().length === 1"
+                        aria-label="Quitar cuenta"
+                      >Quitar</button>
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <div class="detalle-actions">
+                <button type="button" class="btn btn-sm" (click)="addDetalle()">+ Agregar cuenta</button>
+                <span class="detalle-total">Total detalle: Bs {{ detallesTotal().toFixed(2) }}</span>
+              </div>
+
+              @if (detalleMismatch()) {
+                <small class="form-error">La suma del detalle debe coincidir con el monto total.</small>
+              }
+            </div>
+          }
 
           <!-- Proyecto (Opcional) -->
           <div class="form-group">
@@ -143,7 +189,7 @@ import { Modal } from '../../../shared/components/modal/modal';
           <!-- Acciones -->
           <div class="form-actions" style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem">
             <button type="button" class="btn btn-secondary" (click)="cancelar()">Cancelar</button>
-            <button type="submit" class="btn btn-primary" [disabled]="submitting() || form.invalid">
+            <button type="submit" class="btn btn-primary" [disabled]="submitting() || form.invalid || detalleMismatch()">
               @if (submitting()) {
                 Guardando...
               } @else {
@@ -225,6 +271,54 @@ import { Modal } from '../../../shared/components/modal/modal';
       min-width: 140px;
     }
 
+    .form-hint {
+      font-size: 0.85rem;
+      color: var(--color-ucb-gray-500);
+      margin: 0.35rem 0 0.75rem;
+    }
+
+    .detalle-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .detalle-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(140px, 200px) auto;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .detalle-col--actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .detalle-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .detalle-total {
+      font-weight: 600;
+      color: var(--color-ucb-gray-600);
+    }
+
+    @media (max-width: 720px) {
+      .detalle-row {
+        grid-template-columns: 1fr;
+      }
+
+      .detalle-col--actions {
+        justify-content: flex-start;
+      }
+    }
+
     .modal-footer {
       display: flex;
       gap: 0.75rem;
@@ -288,6 +382,7 @@ export class FormCertificacion implements OnInit {
   private readonly proyectoService = inject(ProyectoService);
   private readonly toast = inject(ToastService);
   private readonly modifService = inject(ModificacionService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly isEditing = signal(false);
   protected readonly submitting = signal(false);
@@ -296,6 +391,8 @@ export class FormCertificacion implements OnInit {
   protected readonly unidades = signal<UnidadConDependencia[]>([]);
   protected readonly cuentas = signal<CuentaContableDetalle[]>([]);
   protected readonly proyectos = signal<Proyecto[]>([]);
+  protected readonly cuentaBaseId = signal('');
+  protected readonly detallesTotal = signal(0);
 
   // --- Proyecto al vuelo ---
   protected readonly proyectoSearchTerm = signal('');
@@ -316,12 +413,7 @@ export class FormCertificacion implements OnInit {
     this.cuentas().map(c => ({ value: c.id, label: `${c.codigo} — ${c.cuenta}` }))
   );
 
-  protected readonly proyectoOptions = computed<ComboboxOption[]>(() =>
-    this.proyectos().map(p => ({ value: p.id, label: p.nombre + (p.pei ? ` (PEI: ${p.pei})` : '') }))
-  );
-
-  private certId = '';
-  private certOriginal: CertificacionDetalle | null = null;
+  protected readonly detallesFormArray = this.fb.array<FormGroup>([]);
 
   protected readonly form = this.fb.nonNullable.group({
     id_unidad: ['', Validators.required],
@@ -331,7 +423,30 @@ export class FormCertificacion implements OnInit {
     monto_total: [0, [Validators.required, Validators.min(0.01)]],
     fecha_certificacion: ['', Validators.required],
     comentario: [''],
+    detalles: this.detallesFormArray,
   });
+
+  protected readonly multiCuentaEnabled = computed(() => {
+    const cuenta = this.getCuentaById(this.cuentaBaseId());
+    return Boolean(cuenta && cuenta.nivel === 5 && cuenta.codigo.startsWith('511'));
+  });
+
+  protected readonly detalleMismatch = computed(() => {
+    if (!this.multiCuentaEnabled()) return false;
+    const total = this.form.getRawValue().monto_total;
+    return Math.abs(this.detallesTotal() - total) > 0.01;
+  });
+
+  protected readonly proyectoOptions = computed<ComboboxOption[]>(() =>
+    this.proyectos().map(p => ({ value: p.id, label: p.nombre + (p.pei ? ` (PEI: ${p.pei})` : '') }))
+  );
+
+  private certId = '';
+  private certOriginal: CertificacionDetalle | null = null;
+
+  private skipDetalleReset = false;
+  private syncingTotal = false;
+  private syncingDetalleMonto = false;
 
   async ngOnInit(): Promise<void> {
     // Load catalogs in parallel
@@ -348,6 +463,32 @@ export class FormCertificacion implements OnInit {
       this.toast.error('Error al cargar catálogos');
     }
 
+    this.form.get('id_cuenta_contable')?.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((id) => {
+        this.cuentaBaseId.set(id ?? '');
+        if (!this.skipDetalleReset) {
+          this.resetDetallesForBase();
+        }
+      });
+
+    this.form.get('monto_total')?.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((value) => {
+        if (this.syncingTotal) return;
+        const total = Number(value ?? 0);
+        if (this.multiCuentaEnabled()) {
+          this.syncMontoTotal(this.detallesTotal());
+          return;
+        }
+        this.syncSingleDetalleMonto(total);
+        this.updateDetallesTotal();
+      });
+
+    this.detallesFormArray.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.updateDetallesTotal());
+
     // Check if editing
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
@@ -356,6 +497,7 @@ export class FormCertificacion implements OnInit {
       try {
         const cert = await this.certService.obtener(id);
         this.certOriginal = cert;
+        this.skipDetalleReset = true;
         this.form.patchValue({
           id_unidad: cert.generado_por_id ? this.findUnidadId(cert) : '',
           id_cuenta_contable: this.findCuentaId(cert),
@@ -365,6 +507,10 @@ export class FormCertificacion implements OnInit {
           fecha_certificacion: cert.fecha_certificacion.split('T')[0],
           comentario: cert.comentario ?? '',
         });
+        this.setDetallesFromCert(cert);
+        this.skipDetalleReset = false;
+        this.cuentaBaseId.set(this.form.getRawValue().id_cuenta_contable);
+        this.updateDetallesTotal();
       } catch {
         this.toast.error('Error al cargar certificación');
         this.router.navigate(['/dashboard']);
@@ -377,7 +523,13 @@ export class FormCertificacion implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
-    if (this.form.invalid) return;
+    if (this.form.invalid || this.detalleMismatch()) {
+      this.form.markAllAsTouched();
+      if (this.detalleMismatch()) {
+        this.toast.error('La suma del detalle debe coincidir con el monto total');
+      }
+      return;
+    }
 
     if (this.isEditing()) {
       // Show confirmation modal to optionally add a modification comment
@@ -397,6 +549,7 @@ export class FormCertificacion implements OnInit {
         concepto: val.concepto,
         monto_total: val.monto_total.toFixed(2),
         comentario: val.comentario || null,
+        detalles: this.buildDetallesPayload(),
       });
       this.toast.success('Certificación creada correctamente');
       this.router.navigate(['/dashboard']);
@@ -418,6 +571,7 @@ export class FormCertificacion implements OnInit {
         concepto: val.concepto,
         monto_total: val.monto_total.toFixed(2),
         comentario: val.comentario || null,
+        detalles: this.buildDetallesPayload(),
       });
 
       // Register modification record
@@ -494,5 +648,118 @@ export class FormCertificacion implements OnInit {
     if (!cert.proyecto_nombre) return '';
     const found = this.proyectos().find((p) => p.nombre === cert.proyecto_nombre);
     return found?.id ?? '';
+  }
+
+  protected detalleControls(): FormGroup[] {
+    return this.detallesFormArray.controls as FormGroup[];
+  }
+
+  protected detalleCuentaOptions(index: number): ComboboxOption[] {
+    const base = this.getCuentaById(this.cuentaBaseId());
+    if (!base) return [];
+    const suffix = this.codigoSuffix(base.codigo);
+    const currentId = this.detalleControls()[index]?.get('id_cuenta_contable')?.value as string | undefined;
+    const selected = new Set(
+      this.detalleControls()
+        .map((ctrl, i) => (i === index ? null : (ctrl.get('id_cuenta_contable')?.value as string | null)))
+        .filter((id): id is string => Boolean(id))
+    );
+
+    return this.cuentas()
+      .filter((c) => c.activo && c.nivel === 5 && c.codigo.startsWith('511') && this.codigoSuffix(c.codigo) === suffix)
+      .filter((c) => !selected.has(c.id) || c.id === currentId)
+      .map((c) => ({ value: c.id, label: `${c.codigo} — ${c.cuenta}` }));
+  }
+
+  protected addDetalle(): void {
+    const base = this.getCuentaById(this.cuentaBaseId());
+    if (!base) return;
+    const nextId = this.detalleControls().length === 0 ? base.id : '';
+    this.detallesFormArray.push(this.createDetalleForm(nextId, 0));
+    this.updateDetallesTotal();
+  }
+
+  protected removeDetalle(index: number): void {
+    if (this.detalleControls().length <= 1) return;
+    this.detallesFormArray.removeAt(index);
+    this.updateDetallesTotal();
+  }
+
+  private createDetalleForm(idCuenta: string, monto: number): FormGroup {
+    return this.fb.nonNullable.group({
+      id_cuenta_contable: [idCuenta, Validators.required],
+      monto: [monto, [Validators.required, Validators.min(0.01)]],
+    });
+  }
+
+  private setDetallesFromCert(cert: CertificacionDetalle): void {
+    this.detallesFormArray.clear();
+    const detalles = cert.detalles && cert.detalles.length > 0
+      ? cert.detalles
+      : [{ id_cuenta_contable: this.findCuentaId(cert), monto: cert.monto_total }];
+
+    for (const det of detalles) {
+      this.detallesFormArray.push(
+        this.createDetalleForm(det.id_cuenta_contable, parseFloat(det.monto))
+      );
+    }
+  }
+
+  private resetDetallesForBase(): void {
+    const baseId = this.form.getRawValue().id_cuenta_contable;
+    if (!baseId) {
+      this.detallesFormArray.clear();
+      return;
+    }
+    const monto = this.form.getRawValue().monto_total || 0;
+    this.detallesFormArray.clear();
+    this.detallesFormArray.push(this.createDetalleForm(baseId, monto));
+    this.updateDetallesTotal();
+  }
+
+  private updateDetallesTotal(): void {
+    const total = this.detalleControls().reduce((sum, ctrl) => {
+      const monto = Number(ctrl.get('monto')?.value ?? 0);
+      return sum + (Number.isFinite(monto) ? monto : 0);
+    }, 0);
+    this.detallesTotal.set(total);
+    if (this.multiCuentaEnabled()) {
+      this.syncMontoTotal(total);
+    }
+  }
+
+  private syncMontoTotal(total: number): void {
+    if (this.syncingTotal) return;
+    this.syncingTotal = true;
+    this.form.get('monto_total')?.setValue(total, { emitEvent: false });
+    this.syncingTotal = false;
+  }
+
+  private syncSingleDetalleMonto(total: number): void {
+    if (this.syncingDetalleMonto) return;
+    const baseId = this.form.getRawValue().id_cuenta_contable;
+    if (!baseId) return;
+    if (this.detalleControls().length === 0) {
+      this.detallesFormArray.push(this.createDetalleForm(baseId, total));
+      return;
+    }
+    this.syncingDetalleMonto = true;
+    this.detalleControls()[0]?.get('monto')?.setValue(total, { emitEvent: false });
+    this.syncingDetalleMonto = false;
+  }
+
+  private buildDetallesPayload(): CertificacionCuentaDetalleInput[] {
+    return this.detalleControls().map((ctrl) => ({
+      id_cuenta_contable: String(ctrl.get('id_cuenta_contable')?.value ?? ''),
+      monto: Number(ctrl.get('monto')?.value ?? 0).toFixed(2),
+    }));
+  }
+
+  private getCuentaById(id: string): CuentaContableDetalle | undefined {
+    return this.cuentas().find((c) => c.id === id);
+  }
+
+  private codigoSuffix(codigo: string): string {
+    return codigo.length <= 3 ? codigo : codigo.slice(-3);
   }
 }

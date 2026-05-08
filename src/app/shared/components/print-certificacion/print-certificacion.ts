@@ -56,12 +56,36 @@ import { DatePipe, DecimalPipe } from '@angular/common';
         </div>
 
         <!-- Cuenta -->
-        <div class="cp-row">
-          <div class="cp-field cp-field--full">
-            <span class="cp-label">Cuenta Contable</span>
-            <span class="cp-value">{{ certificacion().cuenta_codigo }} — {{ certificacion().cuenta_nombre }}</span>
+        @if (certificacion().detalles && certificacion().detalles!.length > 1) {
+          <div class="cp-row">
+            <div class="cp-field cp-field--full">
+              <span class="cp-label">Cuentas Contables</span>
+              <table class="cp-table" aria-label="Detalle de cuentas contables">
+                <thead>
+                  <tr>
+                    <th>Cuenta</th>
+                    <th style="text-align:right">Monto (Bs)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (det of certificacion().detalles; track det.id_cuenta_contable) {
+                    <tr>
+                      <td>{{ det.cuenta_codigo }} — {{ det.cuenta_nombre }}</td>
+                      <td style="text-align:right">{{ det.monto | number:'1.2-2' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        } @else {
+          <div class="cp-row">
+            <div class="cp-field cp-field--full">
+              <span class="cp-label">Cuenta Contable</span>
+                <span class="cp-value">{{ certificacion().cuenta_codigo }} — {{ certificacion().cuenta_nombre }}</span>
+            </div>
+          </div>
+        }
 
         <!-- Proyecto + PEI en misma fila (solo si aplica) -->
         @if (certificacion().proyecto_nombre) {
@@ -435,6 +459,7 @@ export class PrintCertificacion {
   readonly modo = input<'vista' | 'impresion'>('impresion');
 
   existenCambios(mod: ModificacionDetalle): boolean {
+    console.log(this.certificacion().detalles)
     return !!(
       (mod.monto_antiguo && mod.monto_nuevo && mod.monto_antiguo !== mod.monto_nuevo) ||
       (mod.concepto_antiguo && mod.concepto_nuevo && mod.concepto_antiguo !== mod.concepto_nuevo)

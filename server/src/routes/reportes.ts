@@ -60,9 +60,10 @@ router.get('/', async (req: Request, res: Response) => {
     // By account
     const [porCuentaRows] = await pool.query<RowDataPacket[]>(
       `SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
-              COUNT(*) as total_certificaciones, SUM(c.monto_total) as monto_total
-       FROM certificacion c
-       INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
+              COUNT(*) as total_certificaciones, SUM(d.monto) as monto_total
+       FROM certificacion_cuenta_detalle d
+       INNER JOIN certificacion c ON d.id_certificacion = c.id
+       INNER JOIN cuenta_contable cc ON d.id_cuenta_contable = cc.id
        WHERE c.deleted_at IS NULL ${conditions}
        GROUP BY cc.id, cc.codigo, cc.cuenta, cc.nivel
        ORDER BY cc.codigo`,
@@ -89,14 +90,15 @@ router.get('/', async (req: Request, res: Response) => {
               COALESCE(agg.total_certificaciones, 0) as total_certificaciones,
               agg.monto_total
        FROM cuenta_contable cc
-       LEFT JOIN (
-         SELECT c.id_cuenta_contable,
-                COUNT(*) as total_certificaciones,
-                SUM(c.monto_total) as monto_total
-         FROM certificacion c
-         WHERE c.deleted_at IS NULL ${conditions}
-         GROUP BY c.id_cuenta_contable
-       ) agg ON agg.id_cuenta_contable = cc.id
+      LEFT JOIN (
+        SELECT d.id_cuenta_contable,
+          COUNT(*) as total_certificaciones,
+          SUM(d.monto) as monto_total
+        FROM certificacion_cuenta_detalle d
+        INNER JOIN certificacion c ON d.id_certificacion = c.id
+        WHERE c.deleted_at IS NULL ${conditions}
+        GROUP BY d.id_cuenta_contable
+      ) agg ON agg.id_cuenta_contable = cc.id
        WHERE cc.activo = 1
        ORDER BY cc.codigo`,
       params

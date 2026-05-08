@@ -174,6 +174,31 @@ CREATE TABLE IF NOT EXISTS certificacion (
     FOREIGN KEY (generado_por) REFERENCES usuario(id)
 );
 
+CREATE TABLE IF NOT EXISTS certificacion_cuenta_detalle (
+    id TEXT NOT NULL PRIMARY KEY,
+    id_certificacion TEXT NOT NULL,
+    id_cuenta_contable TEXT NOT NULL,
+    monto TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (id_certificacion) REFERENCES certificacion(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_cuenta_contable) REFERENCES cuenta_contable(id)
+);
+
+INSERT INTO certificacion_cuenta_detalle (id, id_certificacion, id_cuenta_contable, monto, created_at, updated_at)
+SELECT lower(hex(randomblob(16))) as id,
+       c.id,
+       c.id_cuenta_contable,
+       c.monto_total,
+       c.created_at,
+       c.updated_at
+FROM certificacion c
+WHERE NOT EXISTS (
+    SELECT 1 FROM certificacion_cuenta_detalle d
+    WHERE d.id_certificacion = c.id
+      AND d.id_cuenta_contable = c.id_cuenta_contable
+);
+
 CREATE TABLE IF NOT EXISTS modificacion (
     id TEXT NOT NULL PRIMARY KEY,
     id_certificacion TEXT NOT NULL,
@@ -216,6 +241,8 @@ CREATE INDEX IF NOT EXISTS idx_cert_unidad ON certificacion(id_unidad);
 CREATE INDEX IF NOT EXISTS idx_cert_cuenta ON certificacion(id_cuenta_contable);
 CREATE INDEX IF NOT EXISTS idx_cert_sync ON certificacion(sync_status);
 CREATE INDEX IF NOT EXISTS idx_cert_deleted ON certificacion(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_cert_det_cert ON certificacion_cuenta_detalle(id_certificacion);
+CREATE INDEX IF NOT EXISTS idx_cert_det_cuenta ON certificacion_cuenta_detalle(id_cuenta_contable);
 CREATE INDEX IF NOT EXISTS idx_mod_cert ON modificacion(id_certificacion);
 CREATE INDEX IF NOT EXISTS idx_obs_cert ON observacion_certificacion(id_certificacion);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cert_nro_anio ON certificacion(nro_certificacion, anio_certificacion);

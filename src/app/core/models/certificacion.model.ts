@@ -36,6 +36,20 @@ export interface CertificacionDetalle {
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
+  detalle_count?: number;
+  detalles?: CertificacionCuentaDetalle[];
+}
+
+export interface CertificacionCuentaDetalle {
+  id_cuenta_contable: string;
+  cuenta_codigo: string;
+  cuenta_nombre: string;
+  monto: string;
+}
+
+export interface CertificacionCuentaDetalleInput {
+  id_cuenta_contable: string;
+  monto: string;
 }
 
 export interface CrearCertificacion {
@@ -45,6 +59,7 @@ export interface CrearCertificacion {
   concepto: string;
   monto_total: string;
   comentario?: string | null;
+  detalles?: CertificacionCuentaDetalleInput[];
 }
 
 export interface EditarCertificacion {
@@ -54,6 +69,7 @@ export interface EditarCertificacion {
   concepto?: string;
   monto_total?: string;
   comentario?: string | null;
+  detalles?: CertificacionCuentaDetalleInput[];
 }
 
 export interface FiltrosCertificacion {

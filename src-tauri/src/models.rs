@@ -366,6 +366,7 @@ pub struct CertificacionDetalle {
     pub concepto: String,
     pub monto_total: String,
     pub comentario: Option<String>,
+    pub detalle_count: i32,
     // Unidad
     pub unidad_codigo: i32,
     pub unidad_nombre: String,
@@ -384,6 +385,23 @@ pub struct CertificacionDetalle {
     pub updated_at: NaiveDateTime,
     #[sqlx(default)]
     pub deleted_at: Option<NaiveDateTime>,
+    #[sqlx(skip)]
+    #[serde(default)]
+    pub detalles: Vec<CertificacionCuentaDetalle>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CertificacionCuentaDetalle {
+    pub id_cuenta_contable: String,
+    pub cuenta_codigo: String,
+    pub cuenta_nombre: String,
+    pub monto: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CertificacionCuentaDetalleInput {
+    pub id_cuenta_contable: String,
+    pub monto: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -394,6 +412,8 @@ pub struct CrearCertificacion {
     pub concepto: String,
     pub monto_total: String,
     pub comentario: Option<String>,
+    #[serde(default)]
+    pub detalles: Option<Vec<CertificacionCuentaDetalleInput>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -404,6 +424,8 @@ pub struct EditarCertificacion {
     pub concepto: Option<String>,
     pub monto_total: Option<String>,
     pub comentario: Option<String>,
+    #[serde(default)]
+    pub detalles: Option<Vec<CertificacionCuentaDetalleInput>>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -604,6 +626,15 @@ pub struct SyncCertificacionRow {
     /// (another device changed the record since the client last pulled).
     #[serde(default)]
     pub server_updated_at: Option<String>,
+    #[serde(default)]
+    pub detalles: Option<Vec<SyncCertificacionDetalleRow>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncCertificacionDetalleRow {
+    pub id_cuenta_contable: String,
+    #[serde(deserialize_with = "serde_helpers::de_string_or_number")]
+    pub monto: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

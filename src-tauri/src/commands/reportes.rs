@@ -74,9 +74,10 @@ pub async fn obtener_reporte(
     // By account
     let por_cuenta_query = format!(
         "SELECT cc.id as cuenta_id, cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
-                COUNT(*) as total_certificaciones, CAST(SUM(c.monto_total) AS TEXT) as monto_total
-         FROM certificacion c
-         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
+                COUNT(*) as total_certificaciones, CAST(SUM(d.monto) AS TEXT) as monto_total
+         FROM certificacion_cuenta_detalle d
+         INNER JOIN certificacion c ON d.id_certificacion = c.id
+         INNER JOIN cuenta_contable cc ON d.id_cuenta_contable = cc.id
          WHERE c.deleted_at IS NULL {}
          GROUP BY cc.id, cc.codigo, cc.cuenta, cc.nivel
          ORDER BY cc.codigo",
@@ -105,23 +106,24 @@ pub async fn obtener_reporte(
 
     // Hierarchical account report: all accounts + cert counts for leaves (nivel 5)
     let por_cuenta_jerarquico_query = format!(
-        "SELECT cc.id as cuenta_id, cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
-                cc.nivel, cc.id_cuenta_padre,
-                COALESCE(agg.total_certificaciones, 0) as total_certificaciones,
-                agg.monto_total
-         FROM cuenta_contable cc
-         LEFT JOIN (
-           SELECT c.id_cuenta_contable,
-                  COUNT(*) as total_certificaciones,
-                  CAST(SUM(c.monto_total) AS TEXT) as monto_total
-           FROM certificacion c
-           WHERE c.deleted_at IS NULL {}
-           GROUP BY c.id_cuenta_contable
-         ) agg ON agg.id_cuenta_contable = cc.id
-         WHERE cc.activo = 1
-         ORDER BY cc.codigo",
-        where_clause
-    );
+         "SELECT cc.id as cuenta_id, cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre,
+              cc.nivel, cc.id_cuenta_padre,
+              COALESCE(agg.total_certificaciones, 0) as total_certificaciones,
+              agg.monto_total
+          FROM cuenta_contable cc
+          LEFT JOIN (
+            SELECT d.id_cuenta_contable,
+                COUNT(*) as total_certificaciones,
+                CAST(SUM(d.monto) AS TEXT) as monto_total
+            FROM certificacion_cuenta_detalle d
+            INNER JOIN certificacion c ON d.id_certificacion = c.id
+            WHERE c.deleted_at IS NULL {}
+            GROUP BY d.id_cuenta_contable
+          ) agg ON agg.id_cuenta_contable = cc.id
+          WHERE cc.activo = 1
+          ORDER BY cc.codigo",
+         where_clause
+        );
     let por_cuenta_jerarquico = sqlx::query_as::<_, ReporteCuentaJerarquico>(&por_cuenta_jerarquico_query)
         .fetch_all(pool.inner())
         .await
@@ -170,9 +172,10 @@ pub async fn reporte_detalle_unidad(
     let query = format!(
         "SELECT cc.codigo as cuenta_codigo, cc.cuenta as cuenta_nombre, cc.nivel,
                 COUNT(*) as total_certificaciones,
-                CAST(SUM(c.monto_total) AS TEXT) as monto_total
-         FROM certificacion c
-         INNER JOIN cuenta_contable cc ON c.id_cuenta_contable = cc.id
+                CAST(SUM(d.monto) AS TEXT) as monto_total
+         FROM certificacion_cuenta_detalle d
+         INNER JOIN certificacion c ON d.id_certificacion = c.id
+         INNER JOIN cuenta_contable cc ON d.id_cuenta_contable = cc.id
          WHERE c.deleted_at IS NULL AND c.id_unidad = ? {}
          GROUP BY cc.id, cc.codigo, cc.cuenta, cc.nivel
          ORDER BY cc.codigo",
@@ -200,12 +203,13 @@ pub async fn reporte_detalle_cuenta(
     let query = format!(
         "SELECT uo.codigo as unidad_codigo, uo.unidad as unidad_nombre,
                 COUNT(*) as total_certificaciones,
-                CAST(SUM(c.monto_total) AS TEXT) as monto_total
-         FROM certificacion c
+                CAST(SUM(d.monto) AS TEXT) as monto_total
+         FROM certificacion_cuenta_detalle d
+         INNER JOIN certificacion c ON d.id_certificacion = c.id
          INNER JOIN unidad_organizacional uo ON c.id_unidad = uo.id
-         WHERE c.deleted_at IS NULL AND c.id_cuenta_contable = ? {}
+         WHERE c.deleted_at IS NULL AND d.id_cuenta_contable = ? {}
          GROUP BY uo.id, uo.codigo, uo.unidad
-         ORDER BY CAST(SUM(c.monto_total) AS REAL) DESC",
+         ORDER BY CAST(SUM(d.monto) AS REAL) DESC",
         where_clause
     );
     sqlx::query_as::<_, DetalleCuentaPorUnidad>(&query)
