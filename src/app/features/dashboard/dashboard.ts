@@ -139,7 +139,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
               <th>Cuenta Contable</th>
               <th>Importe (Bs)</th>
               <th>Generado por</th>
-              <th>Acciones</th>
+              <th style="position: sticky; right: 0; background: var(--color-ucb-gray-50, #f9fafb); z-index: 1">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -164,7 +164,7 @@ import { Datepicker } from '../../shared/components/datepicker/datepicker';
                 </td>
                 <td style="text-align: right; font-weight: 600">{{ formatMoney(cert.monto_total) }}</td>
                 <td>{{ cert.generado_por_nombre }}</td>
-                <td>
+                <td style="position: sticky; right: 0; z-index: 1">
                   <div style="display: flex; gap: 0.25rem">
                     <button class="btn-icon" title="Ver detalle" (click)="verDetalle(cert)" aria-label="Ver detalle">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

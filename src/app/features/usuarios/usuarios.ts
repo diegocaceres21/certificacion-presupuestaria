@@ -45,7 +45,7 @@ import { Combobox, ComboboxOption } from '../../shared/components/combobox/combo
                   <span class="badge" [class.badge-admin]="u.rol === 'administrador'"
                         [class.badge-enc]="u.rol === 'encargado'"
                         [class.badge-lec]="u.rol === 'lector'">
-                    {{ u.rol | titlecase }}
+                    {{ u.rol === 'encargado' ? 'responsable' : u.rol | titlecase }}
                   </span>
                 </td>
                 <td>
@@ -169,7 +169,7 @@ export class Usuarios implements OnInit {
 
   protected readonly rolOptions: ComboboxOption[] = [
     { value: 'administrador', label: 'Administrador' },
-    { value: 'encargado', label: 'Encargado' },
+    { value: 'encargado', label: 'Responsable' },
     { value: 'lector', label: 'Lector' },
   ];
 

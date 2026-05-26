@@ -43,7 +43,7 @@ import { UpdateDialog } from '../../shared/components/update-dialog/update-dialo
         <div class="header-user">
           <div class="header-user-info">
             <span class="header-user-name">{{ auth.currentUser()?.nombre_completo }}</span>
-            <span class="header-user-role badge badge-primary">{{ auth.currentUser()?.rol }}</span>
+            <span class="header-user-role badge badge-primary">{{ auth.currentUser()?.rol === 'encargado' ? 'Responsable' : auth.currentUser()?.rol === 'administrador' ? 'Administrador' : 'Lector' }}</span>
           </div>
           <button class="btn btn-sm btn-secondary" (click)="logout()" aria-label="Cerrar sesión">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

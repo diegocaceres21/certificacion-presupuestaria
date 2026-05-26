@@ -261,7 +261,8 @@ label {
    ============================================ */
 .data-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.8125rem;
 }
 .data-table thead th {
@@ -277,8 +278,9 @@ label {
   padding: 0.625rem 0.75rem;
   border-bottom: 1px solid var(--color-ucb-gray-100);
   color: var(--color-ucb-gray-800);
+  background-color: #fff;
 }
-.data-table tbody tr:hover {
+.data-table tbody tr:hover td {
   background-color: var(--color-ucb-gray-50);
 }
 
